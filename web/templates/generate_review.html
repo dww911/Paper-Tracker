@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}一键生成综述{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Review Workflow</p>
+    <h1>一键生成综述</h1>
+    <p class="subtitle">基于 SQLite 文献库筛选高质量论文，生成综述大纲、初稿和代表性文献表。</p>
+  </div>
+</section>
+
+{% if warning %}
+<section class="status-banner warning">{{ warning }} 当前匹配：{{ paper_count or 0 }} 篇。</section>
+{% endif %}
+{% if draft_path %}
+<section class="status-banner success">
+  综述资料包已生成，使用文献 {{ paper_count }} 篇。
+</section>
+{% endif %}
+
+<section class="two-col-flow wide-preview">
+  <form class="flow-panel review-form" method="post" action="/generate/review">
+    <h2>综述主题设置</h2>
+    <label>综述标题
+      <input name="topic" value="{{ form.topic }}">
+    </label>
+    <label>研究方向
+      <select name="profile">
+        {% for item in profiles %}
+        <option value="{{ item.profile_id }}" {% if form.profile == item.profile_id %}selected{% endif %}>{{ item.display_name or item.name or item.profile_id }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>综述类型
+      <select name="review_type">
+        {% for item in ["方法综述", "应用综述", "领域进展综述", "组会汇报版", "小论文引言版", "毕业论文相关工作版"] %}
+        <option value="{{ item }}" {% if form.review_type == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>语言
+      <select name="language">
+        {% for item in ["中文", "英文", "中英双语"] %}
+        <option value="{{ item }}" {% if form.language == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <h2>文献范围选择</h2>
+    <label>时间范围
+      <select name="time_range">
+        <option value="1y" {% if form.time_range == "1y" %}selected{% endif %}>近 1 年</option>
+        <option value="3y" {% if form.time_range == "3y" %}selected{% endif %}>近 3 年</option>
+        <option value="5y" {% if form.time_range == "5y" %}selected{% endif %}>近 5 年</option>
+        <option value="all" {% if form.time_range == "all" %}selected{% endif %}>全部</option>
+      </select>
+    </label>
+    <label>推荐等级
+      <select name="level_filter">
+        <option value="a" {% if form.level_filter == "a" %}selected{% endif %}>A+ / A</option>
+        <option value="aplus" {% if form.level_filter == "aplus" %}selected{% endif %}>仅 A+</option>
+        <option value="b_plus" {% if form.level_filter == "b_plus" %}selected{% endif %}>A / B 以上</option>
+        <option value="all" {% if form.level_filter == "all" %}selected{% endif %}>全部</option>
+      </select>
+    </label>
+    <label>摘要状态
+      <select name="abstract_filter">
+        <option value="complete" {% if form.abstract_filter == "complete" %}selected{% endif %}>仅完整摘要</option>
+        <option value="all" {% if form.abstract_filter == "all" %}selected{% endif %}>包含不完整摘要</option>
+      </select>
+    </label>
+    <label>影响因子
+      <select name="if_filter">
+        <option value="matched" {% if form.if_filter == "matched" %}selected{% endif %}>IF 已匹配</option>
+        <option value="ge1" {% if form.if_filter == "ge1" %}selected{% endif %}>IF >= 1</option>
+        <option value="ge3" {% if form.if_filter == "ge3" %}selected{% endif %}>IF >= 3</option>
+        <option value="ge5" {% if form.if_filter == "ge5" %}selected{% endif %}>IF >= 5</option>
+        <option value="all" {% if form.if_filter == "all" %}selected{% endif %}>全部</option>
+      </select>
+    </label>
+    <label>阅读状态
+      <select name="reading_status">
+        <option value="" {% if not form.reading_status %}selected{% endif %}>全部</option>
+        <option value="read" {% if form.reading_status == "read" %}selected{% endif %}>已读</option>
+        <option value="unread" {% if form.reading_status == "unread" %}selected{% endif %}>待读</option>
+      </select>
+    </label>
+    <label>最多使用文献数量
+      <input type="number" name="max_papers" min="5" max="200" value="{{ form.max_papers }}">
+    </label>
+
+    <h2>生成内容</h2>
+    <div class="option-list">
+      <label><input type="checkbox" checked disabled> 综述大纲</label>
+      <label><input type="checkbox" checked disabled> 研究背景与发展脉络</label>
+      <label><input type="checkbox" checked disabled> 方法分类与代表性论文</label>
+      <label><input type="checkbox" checked disabled> 代表性文献表格</label>
+      <label><input type="checkbox" checked disabled> 当前挑战、未来方向、可创新点</label>
+      <label><input type="checkbox" checked disabled> 参考文献候选列表</label>
+    </div>
+    <button type="submit">生成综述资料包</button>
+  </form>
+  <p class="meta disclaimer">综述初稿 / 资料包，非投稿终稿；引用与事实请人工核对原文。</p>
+
+  <section class="flow-panel markdown-preview">
+    <h2>生成结果</h2>
+    {% if draft_path %}
+    <dl class="result-list">
+      <dt>综述大纲</dt><dd>{{ outline_path }}</dd>
+      <dt>综述初稿</dt><dd>{{ draft_path }}</dd>
+      <dt>文献表</dt><dd>{{ table_path }}</dd>
+      <dt>使用文献</dt><dd>{{ paper_count }} 篇</dd>
+    </dl>
+    <h2>综述大纲预览</h2>
+    <pre>{{ outline_preview }}</pre>
+    {% else %}
+    <div class="empty inline-empty">
+      <h2>还没有生成综述</h2>
+      <p>建议先选择清晰主题，并优先使用 A/B 以上、完整摘要、IF 已匹配的论文。满足条件少于 5 篇时不会生成资料包。</p>
+    </div>
+    {% endif %}
+  </section>
+</section>
+
+{% if papers %}
+<section class="flow-panel">
+  <h2>本次使用的代表性论文</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>标题</th><th>年份</th><th>期刊</th><th>IF</th><th>推荐等级</th><th>综合分</th></tr>
+      </thead>
+      <tbody>
+        {% for paper in papers %}
+        <tr>
+          <td class="title-cell">{{ paper.title }}</td>
+          <td>{{ paper.year or "" }}</td>
+          <td>{{ paper.journal or "" }}</td>
+          <td>{{ paper.impact_factor or "" }}</td>
+          <td><span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level or "未评级" }}</span></td>
+          <td>{{ paper.final_score or paper.relevance_score or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

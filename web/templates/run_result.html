@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}运行结果 #{{ run.id }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Run Result</p>
+    <h1>运行结果 #{{ run.id }}</h1>
+    <p class="subtitle">{{ run.run_time }} · {{ run.mode }} · {{ run.profile }}</p>
+  </div>
+</section>
+
+<section class="stat-grid">
+  <article class="stat-card"><span>检索</span><strong>{{ run.total_found or 0 }}</strong></article>
+  <article class="stat-card"><span>高相关</span><strong>{{ run.kept_after_relevance or 0 }}</strong></article>
+  <article class="stat-card"><span>入库</span><strong>{{ run.ingested_count or run.new_papers or 0 }}</strong></article>
+  <article class="stat-card"><span>更新</span><strong>{{ run.updated_count or 0 }}</strong></article>
+  <article class="stat-card"><span>低分跳过</span><strong>{{ run.skipped_low_score or 0 }}</strong></article>
+  <article class="stat-card"><span>新解析</span><strong>{{ run.new_papers or 0 }}</strong></article>
+</section>
+
+<section class="content-band">
+  <h2>星级分布</h2>
+  <div class="stat-grid compact">
+    <article class="stat-card"><span>★★★★★</span><strong>{{ run.star5 or 0 }}</strong></article>
+    <article class="stat-card"><span>★★★★</span><strong>{{ run.star4 or 0 }}</strong></article>
+    <article class="stat-card"><span>★★★</span><strong>{{ run.star3 or 0 }}</strong></article>
+    <article class="stat-card"><span>★★</span><strong>{{ run.star2 or 0 }}</strong></article>
+    <article class="stat-card"><span>★</span><strong>{{ run.star1 or 0 }}</strong></article>
+  </div>
+</section>
+
+<section class="content-band">
+  <h2>下一步</h2>
+  <div class="hero-actions">
+    <a class="button" href="/papers?profile={{ run.profile }}">查看全部结果</a>
+    <a class="button ghost" href="/generate/daily-report">生成日报</a>
+    <a class="button ghost" href="/archive/export-excel">导出 Excel</a>
+    <a class="button ghost" href="/wechat/push-today">推送微信</a>
+    <a class="button ghost" href="/writing/review">生成综述</a>
+    <a class="button ghost" href="/fetch">再次获取</a>
+  </div>
+</section>
+{% endblock %}

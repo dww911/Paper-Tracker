@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}推送到微信{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Wechat Preview</p>
+    <h1>推送到微信</h1>
+    <p class="subtitle">先预览今日推送内容，再决定是否发送到 Server 酱。</p>
+  </div>
+  <div class="hero-actions">
+    <form method="post" action="/wechat/push-today" class="inline-form">
+      <button type="submit">发送到微信</button>
+    </form>
+  </div>
+</section>
+
+{% if push_message %}
+<section class="status-banner {{ 'success' if push_ok else 'warning' }}">
+  {{ push_message }}
+</section>
+{% endif %}
+
+<section class="two-col-flow wide-preview">
+  <section class="flow-panel">
+    <h2>推送配置</h2>
+    <label>推送标题<input value="{{ push_title or '今日精选论文' }}" readonly></label>
+    <label>推送数量<input type="number" value="3"></label>
+    <p class="meta">Server 酱状态：请在设置中心确认 SCT_KEY。</p>
+    <div class="option-list">
+      <label><input type="checkbox" checked> 只推 A+/A</label>
+      <label><input type="checkbox" checked> 包含推荐理由</label>
+      <label><input type="checkbox" checked> 附完整日报路径</label>
+    </div>
+    <form method="post" action="/wechat/push-today">
+      <button type="submit">确认发送</button>
+    </form>
+  </section>
+  <section class="flow-panel markdown-preview">
+    <h2>推送正文预览</h2>
+    {% if push_preview %}
+    <pre>{{ push_preview }}</pre>
+    {% else %}
+    <pre>今日高质量文献雷达
+
+方向：{{ current_profile.display_name or current_profile.name or current_profile_id }}
+候选论文：{{ dashboard_numbers.total_found }} 篇
+完整摘要：{{ dashboard_numbers.abstract_completed }} 篇
+推荐精读：{{ dashboard_numbers.recommended }} 篇
+
+{% for paper in papers %}
+🔥 {{ loop.index }}. {{ paper.title }}
+推荐等级：{{ paper.recommendation_level or "未评级" }}
+综合分：{{ paper.final_score or paper.relevance_score or 0 }}/30
+期刊：{{ paper.journal or "未知" }}
+链接：{{ paper.url or "" }}
+
+{% endfor %}
+完整日报：daily_reports/2026-05-27.md</pre>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

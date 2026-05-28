@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}导出 Excel{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Export Excel</p>
+    <h1>导出 Excel</h1>
+    <p class="subtitle">从 SQLite 按筛选条件导出；留空则导出全部。</p>
+  </div>
+</section>
+
+<section class="two-col-flow">
+  <form class="flow-panel" method="post" action="/archive/export-excel">
+    <h2>筛选条件</h2>
+    <label>研究方向
+      <input name="profile" placeholder="profile_id，留空=全部" value="{{ filters.profile if filters is defined else '' }}">
+    </label>
+    <label>年份 <input name="year" value="{{ filters.year if filters is defined else '' }}"></label>
+    <label>星级 <input name="rating" type="number" min="1" max="5" value="{{ filters.rating if filters is defined else '' }}"></label>
+    <label>阅读状态 <input name="status" placeholder="unread/read" value="{{ filters.status if filters is defined else '' }}"></label>
+    <label>关键词 <input name="q" value="{{ filters.q if filters is defined else '' }}"></label>
+    <button type="submit">导出 Excel</button>
+  </form>
+  <section class="flow-panel">
+    <h2>归档状态</h2>
+    <dl>
+      <dt>论文总数</dt><dd>{{ dashboard_numbers.total }}</dd>
+      {% if generated_path %}
+      <dt>本次导出</dt><dd>{{ generated_path }}</dd>
+      <dt>导出数量</dt><dd>{{ export_count }} 篇</dd>
+      {% endif %}
+    </dl>
+    <a class="button ghost" href="/archive">返回数据归档</a>
+  </section>
+</section>
+{% endblock %}

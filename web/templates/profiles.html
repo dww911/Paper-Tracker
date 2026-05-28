@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{% if is_new %}新建研究方向{% else %}研究方向{% endif %}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Profiles</p>
+    <h1>{% if is_new %}新建研究方向{% else %}研究方向配置{% endif %}</h1>
+    <p class="subtitle">可新建、编辑、删除自定义方向；ID 仅支持英文、数字和下划线。</p>
+  </div>
+  {% if not is_new %}
+  <a class="button" href="/profiles/new">+ 新建研究方向</a>
+  {% endif %}
+</section>
+
+{% if request.query_params.get('error') == 'exists' %}
+<p class="notice">该研究方向 ID 已存在，请换一个名称。</p>
+{% elif request.query_params.get('error') == 'default' %}
+<p class="notice">默认方向不能删除，请先指定其他方向为默认。</p>
+{% elif request.query_params.get('error') == 'last' %}
+<p class="notice">至少保留一个研究方向。</p>
+{% endif %}
+
+<section class="profile-layout">
+  <aside class="profile-list">
+    {% for pid, item in profiles.items() %}
+    <a class="profile-list-item {% if pid == selected and not is_new %}active{% endif %}" href="/profiles?selected={{ pid }}">
+      <strong>{{ item.display_name or item.name or pid }}</strong>
+      <small>{{ pid }}{% if pid == default_profile %} · 默认{% endif %}</small>
+    </a>
+    {% endfor %}
+    <a class="profile-list-item new-item {% if is_new %}active{% endif %}" href="/profiles/new">+ 新建研究方向</a>
+  </aside>
+
+  <form class="profile-form" method="post" action="{% if is_new %}/profiles/create{% else %}/profiles{% endif %}">
+    <label>研究方向 ID
+      <span class="field-hint">例如 my_ptychography，保存后不建议修改</span>
+      <input name="profile_id" value="{{ selected if not is_new else '' }}" {% if not is_new %}readonly{% endif %} required placeholder="my_research_topic">
+    </label>
+    <label>名称<input name="name" value="{{ profile.name or '' }}" placeholder="中文名称"></label>
+    <label>展示名称<input name="display_name" value="{{ profile.display_name or '' }}" placeholder="网页和侧栏显示"></label>
+    <label class="full-width">描述<textarea name="description" placeholder="一句话说明这个方向关注什么">{{ profile.description or '' }}</textarea></label>
+    <label class="full-width">核心关键词<span class="field-hint">每行一个，用于检索和评分</span><textarea name="include_keywords" placeholder="electron ptychography&#10;4D-STEM">{{ (profile.include_keywords or [])|join('\n') }}</textarea></label>
+    <label class="full-width">必须命中词<span class="field-hint">至少命中其中一个，否则过滤</span><textarea name="must_have_any">{{ (profile.must_have_any or [])|join('\n') }}</textarea></label>
+    <label class="full-width">排除词<span class="field-hint">命中后降低评分或过滤</span><textarea name="exclude_keywords">{{ (profile.exclude_keywords or [])|join('\n') }}</textarea></label>
+    <label class="full-width">研究重点<span class="field-hint">用于推荐理由和解析提示</span><textarea name="research_focus">{{ (profile.research_focus or [])|join('\n') }}</textarea></label>
+    <label>Google Scholar 查询词<input name="google_scholar_query" value="{{ profile.google_scholar_query or '' }}" placeholder="留空则自动组合关键词"></label>
+    <label>arXiv 分类<span class="field-hint">每行一个，如 physics.app-ph</span><textarea name="arxiv_categories">{{ (profile.arxiv_categories or [])|join('\n') }}</textarea></label>
+    <label>最低相关性分<input type="number" name="min_score" value="{{ profile.score_rules.min_score if profile.score_rules else profile.score_threshold or 3 }}" min="0" max="20"></label>
+    <label>分层入库最低分<input type="number" name="ingest_min_score" value="{{ profile.ingest_min_score or 1 }}" min="0" max="20" title="未命中 must_have 但分数≥此值仍低优先级入库"></label>
+    <label class="check"><input type="checkbox" name="ingest_below_must_have" value="1" {% if profile.ingest_below_must_have is not defined or profile.ingest_below_must_have %}checked{% endif %}> 启用低优先级分层入库</label>
+
+    {% set source_flags = profile.default_sources if profile.default_sources is mapping else {} %}
+  {% set source_list = profile.sources or [] %}
+    <div class="profile-source-grid full-width">
+      <span class="field-hint">数据来源</span>
+      <label class="check"><input type="checkbox" name="use_arxiv" {% if is_new or source_flags.get('arxiv', true) or 'arxiv' in source_list %}checked{% endif %}> arXiv</label>
+      <label class="check"><input type="checkbox" name="use_semantic" {% if is_new or source_flags.get('semantic_scholar', true) or 'semantic_scholar' in source_list %}checked{% endif %}> Semantic Scholar</label>
+      <label class="check"><input type="checkbox" name="use_google" {% if source_flags.get('google_scholar') or 'google_scholar' in source_list %}checked{% endif %}> Google Scholar</label>
+      <label class="check"><input type="checkbox" name="enable_wechat" {% if profile.enable_wechat %}checked{% endif %}> 启用微信推送</label>
+      <label class="check"><input type="checkbox" name="set_as_default" {% if is_new or selected == default_profile %}checked{% endif %}> 设为默认方向</label>
+    </div>
+
+    <div class="profile-form-actions full-width">
+      <button type="submit">{% if is_new %}创建研究方向{% else %}保存研究方向{% endif %}</button>
+      {% if not is_new %}
+      <a class="button ghost" href="/profiles?selected={{ selected }}">重置</a>
+      {% endif %}
+    </div>
+  </form>
+
+  {% if not is_new and can_delete %}
+  <form method="post" action="/profiles/delete" class="profile-delete-form" onsubmit="return confirm('确定删除该研究方向？');">
+    <input type="hidden" name="profile_id" value="{{ selected }}">
+    <button type="submit" class="secondary">删除当前方向</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

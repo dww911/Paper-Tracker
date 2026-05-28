@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}微信推送{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Wechat Push</p>
+    <h1>微信推送</h1>
+    <p class="subtitle">管理 Server 酱推送记录，预览和重推今日最值得读论文。</p>
+  </div>
+  <div class="hero-actions">
+    <button type="button">预览今日推送</button>
+    <button type="button">重新推送</button>
+  </div>
+</section>
+
+<section class="metrics">
+  <div><span class="metric-icon green">01</span><small>今日是否推送</small><strong>{{ "是" if dashboard_numbers.pushed else "否" }}</strong><em>Server 酱</em></div>
+  <div><span class="metric-icon blue">02</span><small>推送论文</small><strong>{{ dashboard_numbers.pushed }}</strong><em>篇</em></div>
+  <div><span class="metric-icon amber">03</span><small>推荐候选</small><strong>{{ dashboard_numbers.recommended }}</strong><em>A+/A</em></div>
+  <div><span class="metric-icon blue">04</span><small>完整摘要</small><strong>{{ dashboard_numbers.abstract_completed }}</strong><em>可推送</em></div>
+  <div><span class="metric-icon green">05</span><small>Key 状态</small><strong>检查设置</strong><em>SCT_KEY</em></div>
+</section>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>标题</th><th>期刊</th><th>等级</th><th>综合分</th><th>推送状态</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for paper in pushed %}
+      <tr>
+        <td class="title-cell">{{ paper.title }}</td>
+        <td>{{ paper.journal }}</td>
+        <td><span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level }}</span></td>
+        <td>{{ paper.final_score }}</td>
+        <td class="status-ok">已推送</td>
+        <td><a href="/papers/{{ paper.stable_id }}">查看</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

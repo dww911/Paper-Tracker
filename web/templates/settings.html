@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}设置{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Settings</p>
+    <h1>设置</h1>
+  </div>
+</section>
+
+<section class="content-band">
+  <h2>系统健康检查</h2>
+  <ul class="doctor-list">
+    {% for check in doctor_checks %}
+    <li class="{{ 'ok' if check.ok else 'fail' }}">
+      <strong>{{ check.name }}</strong>
+      <span>{{ check.detail }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="meta">CLI 检查：<code>python .agents\skills\ptychography-paper-tracker\scripts\ptychography_tracker.py --doctor</code></p>
+</section>
+
+<section class="settings-grid">
+  <div>
+    <h2>密钥状态</h2>
+    <dl>
+      <dt>SerpApi Key</dt><dd>{{ serpapi_masked }}</dd>
+      <dt>Server 酱 SCT_KEY</dt><dd>{{ sct_masked }}</dd>
+      <dt>Semantic Scholar</dt><dd>{{ semantic_masked }}</dd>
+      <dt>Kimi / 月之暗面 Key</dt><dd>{{ kimi_masked }}</dd>
+      <dt>AI 解析引擎</dt><dd>{{ paper_ai_provider or "自动" }}</dd>
+      <dt>OpenAI Key</dt><dd>{{ openai_masked }}</dd>
+      <dt>Claude Key</dt><dd>{{ anthropic_masked }}</dd>
+    </dl>
+  </div>
+  <div>
+    <h2>路径</h2>
+    <dl>
+      <dt>SQLite</dt><dd>{{ db_path }}</dd>
+      <dt>Excel</dt><dd>{{ excel_path }}</dd>
+      <dt>Markdown 日报</dt><dd>{{ daily_report_path }}</dd>
+      <dt>期刊指标</dt><dd>{{ journal_metrics_path }}</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="content-band">
+  <h2>API Key 配置</h2>
+  <p class="meta">这里会保存到项目根目录 `.env`，该文件已加入 `.gitignore`，不会公开提交。已有值留空不会覆盖。</p>
+  <form class="api-key-form" method="post" action="/settings/api-keys">
+    <label>SerpApi Key
+      <input name="serpapi_key" type="password" placeholder="{{ serpapi_masked }}">
+    </label>
+    <label>Server 酱 SCT_KEY
+      <input name="sct_key" type="password" placeholder="{{ sct_masked }}">
+    </label>
+    <label>Semantic Scholar API Key
+      <input name="semantic_scholar_key" type="password" placeholder="{{ semantic_masked }}">
+    </label>
+    <label>Kimi API Key（月之暗面）
+      <input name="kimi_key" type="password" placeholder="{{ kimi_masked }}">
+    </label>
+    <label>AI 解析引擎
+      <select name="paper_ai_provider">
+        <option value="" {% if not paper_ai_provider %}selected{% endif %}>自动（有 Kimi 则优先 Kimi）</option>
+        <option value="kimi" {% if paper_ai_provider == 'kimi' %}selected{% endif %}>Kimi</option>
+        <option value="openai" {% if paper_ai_provider == 'openai' %}selected{% endif %}>OpenAI</option>
+        <option value="anthropic" {% if paper_ai_provider == 'anthropic' %}selected{% endif %}>Claude</option>
+      </select>
+    </label>
+    <label>Kimi 模型
+      <input name="kimi_model" value="{{ kimi_parse_model or 'moonshot-v1-32k' }}" placeholder="moonshot-v1-32k">
+    </label>
+    <label>OpenAI API Key
+      <input name="openai_key" type="password" placeholder="{{ openai_masked }}">
+    </label>
+    <label>Claude / Anthropic API Key
+      <input name="anthropic_key" type="password" placeholder="{{ anthropic_masked }}">
+    </label>
+    <button type="submit">保存 API Key</button>
+  </form>
+</section>
+
+<section class="content-band" id="profiles">
+  <h2>研究方向</h2>
+  <p class="meta">配置关键词、最低相关性分、分层入库（<code>ingest_min_score</code>）与数据来源。</p>
+  <a class="button" href="/profiles">管理研究方向</a>
+</section>
+
+<section class="content-band" id="journal-metrics">
+  <h2>期刊指标库</h2>
+  {% if request.query_params.get('journal_rematched') %}
+  <p class="notice">已重新匹配全库期刊指标与综合分。</p>
+  {% elif request.query_params.get('journal_uploaded') %}
+  <p class="notice">期刊指标表已上传，建议点击「重新匹配全库」。</p>
+  {% endif %}
+  <dl class="mini-metrics">
+    <dt>当前文件</dt><dd>{{ journal_metrics_path }}</dd>
+    <dt>记录数</dt><dd>{{ journal_metrics_stats.count or 0 }}</dd>
+    <dt>最后更新</dt><dd>{{ journal_metrics_stats.mtime or "—" }}</dd>
+    <dt>已匹配论文</dt><dd>{{ journal_metrics_stats.papers_matched or 0 }} / {{ journal_metrics_stats.papers_total or 0 }}</dd>
+    <dt>未匹配论文</dt><dd>{{ journal_metrics_stats.papers_unmatched or 0 }}</dd>
+  </dl>
+  {% if not journal_metrics_exists %}
+  <p class="meta">未找到 journal_metrics.csv，系统继续运行；IF/分区显示为「未匹配」。请上传用户自备指标表（不内置商业数据库）。</p>
+  {% endif %}
+  <div class="hero-actions">
+    <form method="post" action="/settings/journal-metrics" enctype="multipart/form-data" class="upload inline-form">
+      <input type="file" name="file" accept=".csv" required>
+      <button type="submit">上传期刊指标表</button>
+    </form>
+    <form method="post" action="/settings/journal-metrics/rematch" class="inline-form">
+      <button type="submit">重新匹配全库</button>
+    </form>
+    <a class="button ghost" href="/settings/journal-metrics/unmatched.csv">下载未匹配期刊列表</a>
+    <a class="button ghost" href="/settings/journal-metrics/example">查看字段模板</a>
+  </div>
+</section>
+{% endblock %}

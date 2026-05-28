@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}生成中心{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Generate Center</p>
+    <h1>生成中心</h1>
+    <p class="subtitle">一键生成日报、周报、Excel、精读笔记、微信摘要和组会汇报。</p>
+  </div>
+</section>
+
+<section class="generate-grid">
+  {% set cards = [
+    ("每日文献日报", "今日概览、推荐论文、过滤原因、阅读建议", "生成", "/generate/daily-report"),
+    ("本周趋势总结", "本周热点、TOP论文、趋势分析、阅读计划", "生成", "/weekly/generate"),
+    ("年度文献库", "按年份整理全部论文，支持星级、IF、引用数筛选", "查看", "/annual"),
+    ("Excel 总文献库", "按研究方向、日期、推荐等级导出", "导出", "/archive/export-excel"),
+    ("单篇精读笔记", "背景、目的、方法、结果、贡献、启发", "生成", "/reading"),
+    ("综述初稿生成", "筛选高质量归档文献，生成综述大纲、初稿和文献表", "开始生成", "/generate/review"),
+    ("微信推送摘要", "最多 3 篇论文，适合 Server 酱", "预览", "/wechat/push-today"),
+    ("组会汇报版", "更适合给导师和课题组看的周报", "生成", "/weekly/generate")
+  ] %}
+  {% for title, desc, action, href in cards %}
+  <article class="generate-card">
+    <h2>{{ title }}</h2>
+    <p>{{ desc }}</p>
+    <a class="button" href="{{ href }}">{{ action }}</a>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

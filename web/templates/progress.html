@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}研究进展{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Research Progress</p>
+    <h1>研究进展</h1>
+    <p class="subtitle">{{ profile_obj.display_name or profile_obj.name or selected_profile }}</p>
+  </div>
+  <form method="get" class="inline-form" action="/progress">
+    <select name="profile" onchange="location.href='/progress/' + this.value">
+      {% for item in profiles %}
+      <option value="{{ item.profile_id }}" {% if item.profile_id == selected_profile %}selected{% endif %}>{{ item.display_name or item.name or item.profile_id }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</section>
+
+{% if request.query_params.get('generated') == '1' %}
+<p class="notice">研究进展报告已导出至 progress_reports/</p>
+{% elif request.query_params.get('generated') == 'review' %}
+<p class="notice">综述准备度分析已导出至 progress_reports/</p>
+{% endif %}
+
+{% if insufficient %}
+<section class="notice">当前文献积累不足（少于 20 篇），建议先 <a href="/fetch?profile={{ selected_profile }}">补全文献</a> 或运行年度文献模式。</section>
+{% endif %}
+
+<section class="metrics six">
+  <div><small>已收录文献</small><strong>{{ metrics.total or 0 }}</strong><em>篇</em></div>
+  <div><small>已精读</small><strong>{{ metrics.deep_read_count or 0 }}</strong><em>有笔记/AI 解析</em></div>
+  <div><small>待读</small><strong>{{ metrics.todo_count or 0 }}</strong><em>未读+待读</em></div>
+  <div><small>我的笔记</small><strong>{{ metrics.notes_count or 0 }}</strong><em>篇</em></div>
+  <div><small>灵感记录</small><strong>{{ metrics.ideas_count or 0 }}</strong><em>条</em></div>
+  <div><small>综述准备度</small><strong>{{ metrics.review_readiness or 0 }}%</strong><em>启发式</em></div>
+</section>
+
+<section class="hero-actions progress-actions">
+  <a class="button" href="/fetch?profile={{ selected_profile }}">补全文献</a>
+  <a class="button ghost" href="/roadmap?profile={{ selected_profile }}">生成精读路线</a>
+  <form method="post" action="/progress/generate" class="inline-form">
+    <input type="hidden" name="profile" value="{{ selected_profile }}">
+    <input type="hidden" name="snapshot" value="on">
+    <button type="submit">生成研究进展报告</button>
+  </form>
+  <form method="post" action="/progress/review-analysis" class="inline-form">
+    <input type="hidden" name="profile" value="{{ selected_profile }}">
+    <button type="submit" class="secondary">综述准备度分析</button>
+  </form>
+  <a class="button ghost" href="/writing?profile={{ selected_profile }}">进入写作中心</a>
+</section>
+
+<section class="progress-grid">
+  <article class="progress-panel">
+    <h2>文献积累进度</h2>
+    {% if not yearly %}
+    <p class="meta">暂无按年统计数据。</p>
+    {% else %}
+    <ul class="year-bars">
+      {% set max_y = yearly[0].count if yearly else 1 %}
+      {% for item in yearly %}
+      <li>
+        <span class="year-label">{{ item.year }} 年</span>
+        <span class="bar-track"><span class="bar-fill" style="width: {{ (100 * item.count / max_y)|int }}%"></span></span>
+        <strong>{{ item.count }} 篇</strong>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </article>
+
+  <article class="progress-panel">
+    <h2>阅读进度</h2>
+    {% set unread = metrics.unread_count or 0 %}
+    {% set todo = metrics.todo_only or 0 %}
+    {% set reading = metrics.reading_count or 0 %}
+    {% set read = metrics.read_count or 0 %}
+    {% set fav = metrics.favorite_count or 0 %}
+    {% set read_total = unread + todo + reading + read %}
+    <ul class="read-stats">
+      <li><span>未读</span><strong>{{ unread }}</strong>
+        <span class="bar-track"><span class="bar-fill blue" style="width: {{ (100 * unread / read_total)|int if read_total else 0 }}%"></span></span>
+      </li>
+      <li><span>待读</span><strong>{{ todo }}</strong>
+        <span class="bar-track"><span class="bar-fill blue" style="width: {{ (100 * todo / read_total)|int if read_total else 0 }}%"></span></span>
+      </li>
+      <li><span>精读中</span><strong>{{ reading }}</strong>
+        <span class="bar-track"><span class="bar-fill amber" style="width: {{ (100 * reading / read_total)|int if read_total else 0 }}%"></span></span>
+      </li>
+      <li><span>已读</span><strong>{{ read }}</strong>
+        <span class="bar-track"><span class="bar-fill green" style="width: {{ (100 * read / read_total)|int if read_total else 0 }}%"></span></span>
+      </li>
+      <li><span>收藏</span><strong>{{ fav }}</strong></li>
+    </ul>
+    <a class="link-action" href="/reading?profile={{ selected_profile }}">进入阅读队列 →</a>
+  </article>
+
+  <article class="progress-panel full-width">
+    <h2>关键词覆盖度</h2>
+    {% if not keywords %}
+    <p class="meta">请在研究方向配置 include_keywords / research_focus。</p>
+    {% else %}
+    <ul class="keyword-bars">
+      {% for item in keywords %}
+      <li class="{% if item.low %}low{% endif %}">
+        <span>{{ item.keyword }}</span>
+        <span class="bar-track"><span class="bar-fill" style="width: {{ item.pct }}%"></span></span>
+        <strong>{{ item.count }} 篇</strong>
+        {% if item.low %}<em class="warn">偏少</em>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </article>
+
+  <article class="progress-panel">
+    <h2>里程碑论文</h2>
+  <p class="meta">建议精读 {{ metrics.milestone_total or 0 }} 篇 · 已读 {{ metrics.milestone_read or 0 }} 篇 · 完成度 {{ metrics.milestone_pct or 0 }}%</p>
+    {% if not milestones %}
+    <p class="meta">暂无里程碑标记。可在文献详情页将高星论文标为里程碑。</p>
+    {% else %}
+    <ul class="milestone-list">
+      {% for paper in milestones %}
+      <li>
+        <span class="stars">{{ '★' * (paper.display_rating or 1) }}</span>
+        <div>
+          <a href="/papers/{{ paper.stable_id }}"><strong>{{ paper.title }}</strong></a>
+          <small>{{ paper.year or '—' }} · {{ paper.milestone_stage or paper.recommendation_level or '里程碑' }}
+            {% if paper.milestone_reason %} — {{ paper.milestone_reason }}{% endif %}
+          </small>
+          <span class="meta">阅读：{{ paper.reading_status or 'unread' }}</span>
+        </div>
+        <div class="card-actions">
+          <a href="/papers/{{ paper.stable_id }}">查看详情</a>
+          <form method="post" action="/papers/{{ paper.stable_id }}/read" class="inline-form"><button type="submit">标记已读</button></form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </article>
+
+  <article class="progress-panel">
+    <h2>灵感与笔记</h2>
+    <dl class="mini-metrics">
+      <dt>Markdown 笔记</dt><dd>{{ metrics.notes_count or 0 }} 篇</dd>
+      <dt>灵感记录</dt><dd>{{ metrics.ideas_count or 0 }} 条</dd>
+      <dt>可发展成课题</dt><dd>{{ metrics.idea_writable or 0 }} 条</dd>
+      <dt>已关联文献</dt><dd>{{ metrics.ideas_linked or 0 }} 条</dd>
+    </dl>
+    <a class="link-action" href="/ideas?profile={{ selected_profile }}">查看灵感笔记 →</a>
+  </article>
+
+  <article class="progress-panel">
+    <h2>写作准备度</h2>
+    {% set r = metrics.readiness or {} %}
+    <ul class="readiness-list">
+      <li><span>综述准备度</span><span class="bar-track"><span class="bar-fill green" style="width: {{ r.review or 0 }}%"></span></span><strong>{{ r.review or 0 }}%</strong></li>
+      <li><span>小论文准备度</span><span class="bar-track"><span class="bar-fill blue" style="width: {{ r.paper or 0 }}%"></span></span><strong>{{ r.paper or 0 }}%</strong></li>
+      <li><span>组会汇报准备度</span><span class="bar-track"><span class="bar-fill amber" style="width: {{ r.seminar or 0 }}%"></span></span><strong>{{ r.seminar or 0 }}%</strong></li>
+    </ul>
+  </article>
+
+  <article class="progress-panel full-width">
+    <h2>下一步建议</h2>
+    <ul class="suggestion-list">
+      {% for tip in suggestions %}
+      <li>{{ tip }}</li>
+      {% endfor %}
+    </ul>
+  </article>
+
+  {% if snapshots %}
+  <article class="progress-panel full-width">
+    <h2>进展快照</h2>
+    <ul class="simple-list">
+      {% for s in snapshots %}
+      <li>{{ s.snapshot_date }} — 文献 {{ s.paper_count }} · 已读 {{ s.read_count }} · 综述准备度 {{ s.review_readiness }}%</li>
+      {% endfor %}
+    </ul>
+  </article>
+  {% endif %}
+</section>
+
+<nav class="progress-subnav meta">
+  <a href="/progress/{{ selected_profile }}">当前方向进度</a> ·
+  <a href="/progress/{{ selected_profile }}#keywords">关键词覆盖</a> ·
+  <a href="/progress/{{ selected_profile }}#milestones">里程碑</a> ·
+  <a href="/roadmap">精读路线</a> ·
+  <a href="/writing/review">综述准备</a>
+</nav>
+{% endblock %}

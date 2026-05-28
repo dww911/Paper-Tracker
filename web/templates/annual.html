@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}{{ year }} 年度文献库{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Annual Literature Library</p>
+    <h1>{{ year }} 年度文献库</h1>
+    <p class="subtitle">系统按星级、IF、引用数和摘要完整度整理全年论文；最终读不读，由你自己筛选。</p>
+  </div>
+  <div class="hero-actions">
+    <form method="post" action="/annual/{{ year }}/run" class="inline-form">
+      <input type="hidden" name="profile" value="{{ filters.profile or current_profile_id }}">
+      <input type="hidden" name="max_results" value="200">
+      <button type="submit">更新 {{ year }} 年论文</button>
+    </form>
+    <form method="post" action="/annual/{{ year }}/markdown" class="inline-form">
+      {% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+      <button type="submit" class="secondary">生成年度 Markdown</button>
+    </form>
+    <form method="post" action="/annual/{{ year }}/excel" class="inline-form">
+      {% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+      <button type="submit" class="secondary">导出年度 Excel</button>
+    </form>
+    <a class="button ghost" href="/generate/review">生成年度综述</a>
+  </div>
+</section>
+
+{% if generated == "run_started" %}
+<section class="status-banner success">年度文献更新已启动，完成后刷新页面查看结果；日志见 web_run.log。</section>
+{% elif generated == "markdown" %}
+<section class="status-banner success">年度 Markdown 已生成到 .agents/skills/annual_reports/。</section>
+{% elif generated == "excel" %}
+<section class="status-banner success">年度 Excel 已导出到 .agents/skills/exports/。</section>
+{% endif %}
+
+<section class="year-switcher">
+  {% for item in years %}
+  <a class="{{ 'active' if item == year else '' }}" href="/annual/{{ item }}">{{ item }} 年</a>
+  {% endfor %}
+</section>
+
+<section class="metrics six">
+  <div><span class="metric-icon blue">01</span><small>年度论文总数</small><strong>{{ annual_stats.total or 0 }}</strong><em>全部展示</em></div>
+  <div><span class="metric-icon green">02</span><small>完整摘要</small><strong>{{ annual_stats.abstract_completed or 0 }}</strong><em>可用于综述</em></div>
+  <div><span class="metric-icon blue">03</span><small>IF 匹配</small><strong>{{ annual_stats.if_matched or 0 }}</strong><em>期刊质量</em></div>
+  <div><span class="metric-icon red">04</span><small>五星论文</small><strong>{{ annual_stats.five_star or 0 }}</strong><em>强烈建议精读</em></div>
+  <div><span class="metric-icon amber">05</span><small>四星论文</small><strong>{{ annual_stats.four_star or 0 }}</strong><em>推荐阅读</em></div>
+  <div><span class="metric-icon blue">06</span><small>三星论文</small><strong>{{ annual_stats.three_star or 0 }}</strong><em>值得关注</em></div>
+  <div><span class="metric-icon green">07</span><small>已读</small><strong>{{ annual_stats.read_count or 0 }}</strong></div>
+  <div><span class="metric-icon amber">08</span><small>收藏</small><strong>{{ annual_stats.favorite_count or 0 }}</strong></div>
+  <div><span class="metric-icon blue">09</span><small>综述包</small><strong>{{ annual_stats.review_count or 0 }}</strong></div>
+</section>
+
+<form class="filters annual-filters" method="get">
+  <select name="profile">
+    <option value="">全部方向</option>
+    {% for item in profiles %}
+    <option value="{{ item.profile_id }}" {% if filters.profile == item.profile_id %}selected{% endif %}>{{ item.display_name or item.name or item.profile_id }}</option>
+    {% endfor %}
+  </select>
+  <select name="rating">
+    <option value="">全部星级</option>
+    {% for star in [5,4,3,2,1] %}
+    <option value="{{ star }}" {% if filters.rating|string == star|string %}selected{% endif %}>{{ star|stars }}</option>
+    {% endfor %}
+  </select>
+  <input name="if_min" type="number" step="0.1" placeholder="IF 最小值" value="{{ filters.if_min }}">
+  <input name="if_max" type="number" step="0.1" placeholder="IF 最大值" value="{{ filters.if_max }}">
+  <input name="citation_min" type="number" placeholder="引用数最小值" value="{{ filters.citation_min }}">
+  <select name="jcr_quartile">
+    <option value="">JCR</option>
+    {% for q in ['Q1','Q2','Q3','Q4'] %}<option value="{{ q }}" {% if filters.jcr_quartile == q %}selected{% endif %}>{{ q }}</option>{% endfor %}
+  </select>
+  <select name="cas_quartile">
+    <option value="">中科院</option>
+    {% for z in ['1区','2区','3区','4区'] %}<option value="{{ z }}" {% if filters.cas_quartile == z %}selected{% endif %}>{{ z }}</option>{% endfor %}
+  </select>
+  <select name="cas_top">
+    <option value="">TOP</option>
+    <option value="yes" {% if filters.cas_top == 'yes' %}selected{% endif %}>中科院 TOP</option>
+  </select>
+  <select name="cas_warning">
+    <option value="">预警</option>
+    <option value="no" {% if filters.cas_warning == 'no' %}selected{% endif %}>无预警</option>
+    <option value="yes" {% if filters.cas_warning == 'yes' %}selected{% endif %}>预警</option>
+  </select>
+  <select name="journal_matched">
+    <option value="">期刊匹配</option>
+    <option value="yes" {% if filters.journal_matched == 'yes' %}selected{% endif %}>已匹配</option>
+    <option value="no" {% if filters.journal_matched == 'no' %}selected{% endif %}>未匹配</option>
+  </select>
+  <input name="core_tag" placeholder="核心标签" value="{{ filters.core_tag }}">
+  <select name="abstract">
+    <option value="">摘要状态</option>
+    <option value="complete" {% if filters.abstract == "complete" %}selected{% endif %}>完整摘要</option>
+    <option value="incomplete" {% if filters.abstract == "incomplete" %}selected{% endif %}>不完整摘要</option>
+  </select>
+  <select name="status">
+    <option value="">阅读状态</option>
+    <option value="unread" {% if filters.status == "unread" %}selected{% endif %}>未读</option>
+    <option value="todo" {% if filters.status == "todo" %}selected{% endif %}>待读</option>
+    <option value="reading" {% if filters.status == "reading" %}selected{% endif %}>精读中</option>
+    <option value="read" {% if filters.status == "read" %}selected{% endif %}>已读</option>
+    <option value="ignored" {% if filters.status == "ignored" %}selected{% endif %}>忽略</option>
+  </select>
+  <select name="favorite">
+    <option value="">收藏状态</option>
+    <option value="yes" {% if filters.favorite == "yes" %}selected{% endif %}>仅收藏</option>
+  </select>
+  <select name="included">
+    <option value="">综述资料包</option>
+    <option value="yes" {% if filters.included == "yes" %}selected{% endif %}>已加入综述</option>
+  </select>
+  <input name="source" placeholder="数据源" value="{{ filters.source }}">
+  <input name="q" placeholder="关键词 / 标题 / 摘要" value="{{ filters.q }}">
+  <button type="submit">筛选</button>
+</form>
+
+{% if not papers %}
+<section class="empty">
+  <h2>暂无年度论文</h2>
+  <p>可以点击“更新 {{ year }} 年论文”，或放宽筛选条件。</p>
+</section>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>星级</th><th>标题</th><th>年份</th><th>期刊</th><th>IF</th><th>引用数</th><th>摘要</th><th>相关性分</th><th>综合分</th><th>阅读状态</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for paper in papers %}
+      <tr>
+        <td>
+          <form method="post" action="/papers/{{ paper.stable_id }}/rating" class="tiny-form">
+            <input type="hidden" name="return_to" value="{{ request.url.path }}?{{ request.url.query }}">
+            <select name="rating" onchange="this.form.submit()">
+              {% for star in [5,4,3,2,1] %}
+              <option value="{{ star }}" {% if paper.display_rating|string == star|string %}selected{% endif %}>{{ star|stars }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td class="title-cell">{{ paper.title }}</td>
+        <td>{{ paper.publication_year or paper.year or "" }}</td>
+        <td>{{ paper.journal or "" }}</td>
+        <td>{{ paper.impact_factor or "" }}</td>
+        <td>{{ paper.citation_count or 0 }}</td>
+        <td><span class="status-ok">{{ "完整" if paper.abstract_is_complete else "部分" }}</span></td>
+        <td>{{ paper.relevance_score or 0 }}</td>
+        <td>{{ paper.final_score or 0 }}</td>
+        <td>
+          <form method="post" action="/papers/{{ paper.stable_id }}/status" class="tiny-form">
+            <input type="hidden" name="return_to" value="{{ request.url.path }}?{{ request.url.query }}">
+            <select name="reading_status" onchange="this.form.submit()">
+              {% for value, label in [("unread","未读"),("todo","待读"),("reading","精读中"),("read","已读"),("ignored","忽略")] %}
+              <option value="{{ value }}" {% if paper.reading_status == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td class="annual-actions">
+          <a href="/papers/{{ paper.stable_id }}">详情</a>
+          <form method="post" action="/papers/{{ paper.stable_id }}/review-toggle">
+            <input type="hidden" name="return_to" value="{{ request.url.path }}?{{ request.url.query }}">
+            <button type="submit" class="icon-button">{{ "移出综述" if paper.included_in_review else "加入综述" }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

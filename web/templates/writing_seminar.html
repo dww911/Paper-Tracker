@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}组会汇报{% endblock %}
+{% block content %}
+<section class="page-head"><h1>组会汇报提纲</h1></section>
+{% if generated_path %}<p class="success-text">已保存：{{ generated_path }}</p>{% endif %}
+<pre class="log-preview">{{ markdown_preview }}</pre>
+<form method="post"><button type="submit">重新生成</button></form>
+{% endblock %}

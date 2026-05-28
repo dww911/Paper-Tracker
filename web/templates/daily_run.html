@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}立即更新{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Run Literature Radar</p>
+    <h1>立即更新今日文献</h1>
+    <p class="subtitle">选择研究方向、运行模式和输出选项，然后启动完整流程。</p>
+  </div>
+</section>
+
+<section class="two-col-flow">
+  <p class="meta"><a href="/fetch">推荐使用「获取更多文献」页面</a>（含运行结果反馈）。</p>
+  <form class="flow-panel" method="post" action="/run">
+    <h2>运行配置</h2>
+    <label>研究方向
+      <select name="profile">
+        {% for item in profiles %}
+        <option value="{{ item.profile_id }}" {% if item.profile_id == current_profile_id %}selected{% endif %}>{{ item.display_name or item.name or item.profile_id }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>运行模式
+      <select name="mode">
+        <option value="daily">daily：arXiv，每日稳定更新</option>
+        <option value="google_scholar">google_scholar：Google Scholar 检索</option>
+        <option value="high_quality">high_quality：补摘要、IF、引用数</option>
+      </select>
+    </label>
+    <label>时间范围
+      <select name="time_range_days">
+        <option value="1">1 天</option>
+        <option value="7" selected>7 天</option>
+        <option value="30">30 天</option>
+      </select>
+    </label>
+    <label>最大结果数
+      <input name="max_results" type="number" value="30" min="1" max="100">
+    </label>
+    <div class="option-list">
+      <label><input type="checkbox" checked disabled> 写入 SQLite</label>
+      <label><input type="checkbox" checked disabled> 追加 Excel</label>
+      <label><input type="checkbox" checked disabled> 生成 Markdown 日报</label>
+      <label><input type="checkbox"> 完成后推送微信</label>
+    </div>
+    <button type="submit">开始运行</button>
+  </form>
+
+  <section class="flow-panel">
+    <h2>运行流程预览</h2>
+    <div class="vertical-steps">
+      <div><strong>1. 检索文献</strong><span>Google Scholar / arXiv / Semantic Scholar</span></div>
+      <div><strong>2. 补全摘要</strong><span>Semantic Scholar → OpenAlex → arXiv → Crossref</span></div>
+      <div><strong>3. 匹配影响因子</strong><span>读取 journal_metrics.csv</span></div>
+      <div><strong>4. AI 阅读判断</strong><span>背景、目的、方法、结果、意义、是否精读</span></div>
+      <div><strong>5. 写入归档</strong><span>SQLite + Excel + Markdown</span></div>
+      <div><strong>6. 准备推送</strong><span>A+/A 最多 3 篇</span></div>
+    </div>
+    <p class="meta">运行日志会写入：F:\Ptychography-Paper-Tracker\web_run.log</p>
+  </section>
+</section>
+{% endblock %}

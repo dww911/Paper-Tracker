@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}阅读队列{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Reading Queue</p>
+    <h1>阅读队列</h1>
+    <p class="subtitle">把“发现论文”推进到待读、精读、已读、收藏和笔记。</p>
+  </div>
+</section>
+
+<section class="kanban">
+  {% for name, papers in buckets.items() %}
+  <div class="kanban-col">
+    <h2>{{ name }} <span>{{ papers|length }}</span></h2>
+    {% for paper in papers %}
+    <article class="queue-card">
+      <span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level or "未评级" }}</span>
+      <h3>{{ paper.title }}</h3>
+      <p class="meta">{{ paper.journal or "未知期刊" }} ｜ {{ paper.final_score or 0 }}/30</p>
+      <div class="card-actions">
+        <a href="/papers/{{ paper.stable_id }}">详情</a>
+        <a href="/papers/{{ paper.stable_id }}/export">生成笔记</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+{% endblock %}

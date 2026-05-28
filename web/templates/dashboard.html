@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}今日雷达{% endblock %}
+{% block content %}
+{% if run_started %}
+<section class="notice">文献雷达已开始生成。完成后刷新页面即可看到新结果，运行日志保存在 web_run.log。</section>
+{% endif %}
+
+<section class="hero-console">
+  <div>
+    <p class="eyebrow">Today Console</p>
+    <h1>今日工作台</h1>
+    <p class="subtitle">当前方向：{{ current_profile.display_name or current_profile.name or current_profile_id or "未选择" }}</p>
+    <p class="meta">最近更新：{{ latest.run_time if latest else "暂无" }} ｜ 运行模式：{{ latest.mode if latest else "等待运行" }} ｜ 状态：{{ "已完成" if latest else "等待首次运行" }}</p>
+  </div>
+  <div class="hero-actions">
+    <a class="button" href="/fetch">获取更多文献</a>
+    <a class="button ghost" href="/papers?date=today&profile={{ current_profile_id }}">查看全部今日文献</a>
+    <a class="button ghost" href="/generate/daily-report">生成今日日报</a>
+    <a class="button ghost" href="/wechat/push-today">推送到微信</a>
+    <a class="button ghost" href="/weekly/generate">生成本周总结</a>
+  </div>
+</section>
+
+{% if not papers %}
+<section class="empty">
+  <h2>还没有可展示的文献结果</h2>
+  <p>建议先用 daily 模式生成一轮结果；如果已配置 SerpApi Key，再使用 high_quality。</p>
+  <form class="empty-run" method="post" action="/run">
+    <input type="hidden" name="profile" value="{{ current_profile_id }}">
+    <select name="mode">
+      <option value="daily">daily：不需要 SerpApi Key</option>
+      <option value="high_quality">high_quality：需要 SerpApi Key</option>
+    </select>
+    <input type="hidden" name="max_results" value="30">
+    <input type="hidden" name="time_range_days" value="7">
+    <button type="submit">生成文献雷达</button>
+  </form>
+  <code>运行日志：F:\Ptychography-Paper-Tracker\web_run.log</code>
+</section>
+{% else %}
+<section class="metrics six">
+  <div><span class="metric-icon blue">01</span><small>今日候选</small><strong>{{ dashboard_numbers.total_found }}</strong><em>Google Scholar / arXiv</em></div>
+  <div><span class="metric-icon blue">02</span><small>完整摘要</small><strong>{{ dashboard_numbers.abstract_completed }}</strong><em>摘要补全结果</em></div>
+  <div><span class="metric-icon blue">03</span><small>IF匹配</small><strong>{{ dashboard_numbers.if_matched }}</strong><em>journal_metrics.csv</em></div>
+  <div><span class="metric-icon amber">04</span><small>推荐精读</small><strong>{{ dashboard_numbers.recommended }}</strong><em>A+ / A 推荐</em></div>
+  <div><span class="metric-icon green">05</span><small>待读论文</small><strong>{{ dashboard_numbers.unread }}</strong><em>阅读队列</em></div>
+  <div><span class="metric-icon green">06</span><small>本周新增</small><strong>{{ dashboard_numbers.weekly_new }}</strong><em>等待周报汇总</em></div>
+</section>
+
+<section class="workbench-grid">
+  <div class="main-work">
+    <section class="top-papers-section">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Reading Decision</p>
+          <h2>今日最值得读 TOP 3</h2>
+        </div>
+      </div>
+      <div class="top-paper-grid">
+        {% for paper in papers %}
+        <article class="paper-card top-card">
+          <div class="rank-row">
+            <span class="rank-badge">{{ loop.index }}</span>
+            <span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level or "未评级" }}</span>
+          </div>
+          <h3>{{ paper.title }}</h3>
+          <p class="meta">期刊：{{ paper.journal or "未知" }} ｜ IF {{ paper.impact_factor or "未匹配" }} ｜ 引用 {{ paper.citation_count or 0 }}</p>
+          <p class="summary">{{ (paper.abstract_zh or paper.abstract_original or "暂无摘要")[:120] }}</p>
+          <p class="reason">为什么推荐：{{ "高相关 + 摘要完整 + 可进入精读队列" if paper.abstract_is_complete else "相关性较高，建议先补全文摘后判断" }}</p>
+          <div class="score-line"><span>综合分</span><strong>{{ paper.final_score or paper.relevance_score or 0 }}/30</strong></div>
+          <div class="card-actions">
+            <a href="/papers/{{ paper.stable_id }}">查看详情</a>
+            <form method="post" action="/papers/{{ paper.stable_id }}/read"><button type="submit">标记已读</button></form>
+            <a href="/papers/{{ paper.stable_id }}/export">生成精读笔记</a>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="pipeline-card">
+      <h2>今日处理流水线</h2>
+      <div class="pipeline">
+        <div><span>检索</span><strong>{{ dashboard_numbers.total_found }}</strong><em>候选论文</em></div>
+        <div><span>补摘要</span><strong>{{ dashboard_numbers.abstract_completed }}</strong><em>完整摘要</em></div>
+        <div><span>匹配IF</span><strong>{{ dashboard_numbers.if_matched }}</strong><em>期刊指标</em></div>
+        <div><span>AI解析</span><strong>{{ dashboard_numbers.recommended }}</strong><em>推荐判断</em></div>
+        <div><span>归档</span><strong>{{ dashboard_numbers.total }}</strong><em>SQLite/Excel</em></div>
+        <div><span>推送</span><strong>{{ dashboard_numbers.pushed }}</strong><em>微信提醒</em></div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="right-work">
+    <section class="assistant-card">
+      <h2>今日阅读建议</h2>
+      <p>今天建议优先读第 1 篇，它与当前方向的关键词命中最高。第 2 篇可放入专题积累，第 3 篇适合归档到周报候选。</p>
+    </section>
+    <section class="quick-generate-card">
+      <h2>一键生成</h2>
+      <a href="/generate/daily-report">今日 Markdown 日报</a>
+      <a href="/weekly/generate">本周趋势总结</a>
+      <a href="/archive/export-excel">Excel 总文献库</a>
+      <a href="/papers/{{ papers[0].stable_id if papers else '' }}/export">单篇精读笔记</a>
+      <a href="/generate/review">一键生成综述</a>
+      <a href="/annual">年度文献库</a>
+      <a href="/wechat/push-today">微信推送摘要</a>
+      <a href="/weekly/generate">导师汇报版周报</a>
+    </section>
+  </aside>
+</section>
+
+<section class="bottom-grid">
+  <article class="analysis-card">
+    <h3>本周趋势预览</h3>
+    <div class="tag-cloud">
+      {% for item in keywords %}
+      <span>{{ item }}</span>
+      {% endfor %}
+    </div>
+  </article>
+  <article class="analysis-card">
+    <h3>最近运行记录</h3>
+    {% for run in recent_runs %}
+    <div class="run-row"><span>{{ run.run_time }}</span><strong>{{ run.mode }}</strong></div>
+    {% endfor %}
+  </article>
+  <article class="analysis-card">
+    <h3>微信推送记录</h3>
+    <div class="mini-row"><span>今日推送</span><strong>{{ dashboard_numbers.pushed }} 篇</strong></div>
+    <a class="link-action" href="/wechat">查看推送记录 →</a>
+  </article>
+</section>
+{% endif %}
+{% endblock %}

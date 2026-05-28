@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}获取更多文献{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Fetch Papers</p>
+    <h1>获取更多文献</h1>
+    <p class="subtitle">默认 daily（arXiv）；相关论文全部入库。若结果偏少，请在设置 → 研究方向放宽 must_have / ingest_min_score，或把检索范围改为 30 天、50 篇。</p>
+  </div>
+  <a class="button ghost" href="/runs/latest">查看最近一次运行</a>
+</section>
+
+<section class="two-col-flow">
+  <form class="flow-panel" method="post" action="/run" id="fetch-form">
+    <h2>运行配置</h2>
+    <label>研究方向
+      <select name="profile">
+        {% for item in profiles %}
+        <option value="{{ item.profile_id }}" {% if item.profile_id == current_profile_id %}selected{% endif %}>{{ item.display_name or item.name or item.profile_id }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>运行模式
+      <select name="mode" id="fetch-mode">
+        <option value="daily" selected>daily：arXiv（推荐）</option>
+        <option value="high_quality">high_quality：补摘要、IF</option>
+        <option value="google_scholar">google_scholar</option>
+        <option value="annual_summary">annual_summary：按年度</option>
+      </select>
+    </label>
+
+    <div id="panel-daily" class="fetch-range-panel">
+      <label>时间范围（最近 N 天）
+        <select name="time_range_days">
+          <option value="1">1 天</option>
+          <option value="7" selected>7 天</option>
+          <option value="30">30 天</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="panel-annual" class="fetch-range-panel" hidden>
+      <p class="field-hint">年度模式只按年份检索，不使用「最近 N 天」。</p>
+      <label>单年
+        <input name="year" id="input-year" type="number" min="2000" max="2100" placeholder="例如 2026">
+      </label>
+      <p class="field-hint">或填写起止年（与单年二选一）</p>
+      <label>起止年
+        <input name="start_year" id="input-start-year" type="number" min="2000" max="2100" placeholder="2024" style="width:45%">
+        —
+        <input name="end_year" id="input-end-year" type="number" min="2000" max="2100" placeholder="2026" style="width:45%">
+      </label>
+    </div>
+
+    <p id="panel-scholar-hint" class="field-hint" hidden>该模式按「最大检索数」抓取，无需选择天数或年份。</p>
+
+    <label>最大检索数
+      <select name="max_results">
+        <option value="30">30</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+      <span class="field-hint" id="max-results-hint">daily / 谷歌学术：单次检索上限</span>
+    </label>
+
+    <h3>输出选项</h3>
+    <div class="option-list">
+      <label><input type="checkbox" name="write_db" value="on" checked> 写入 SQLite</label>
+      <label><input type="checkbox" name="write_excel" value="on" checked> 追加 Excel</label>
+      <label><input type="checkbox" name="write_markdown" value="on" checked> 生成 Markdown 日报</label>
+      <label><input type="checkbox" name="notify_wechat" value="on"> 完成后推送微信</label>
+    </div>
+    <button type="submit" id="fetch-submit">开始获取</button>
+  </form>
+  <section class="flow-panel">
+    <h2>分层入库说明</h2>
+    <p>高相关：命中 must_have_any 且达到 min_score。</p>
+    <p>低优先级：仅达到 ingest_min_score（在设置 → 研究方向中可调）。</p>
+    <p>运行完成后跳转结果页，可继续生成日报 / 导出 / 推送。</p>
+  </section>
+</section>
+<script>
+(function () {
+  const form = document.getElementById('fetch-form');
+  const modeEl = document.getElementById('fetch-mode');
+  const panelDaily = document.getElementById('panel-daily');
+  const panelAnnual = document.getElementById('panel-annual');
+  const panelScholarHint = document.getElementById('panel-scholar-hint');
+  const maxHint = document.getElementById('max-results-hint');
+  const yearInput = document.getElementById('input-year');
+  const startYear = document.getElementById('input-start-year');
+  const endYear = document.getElementById('input-end-year');
+
+  function setDisabled(container, disabled) {
+    if (!container) return;
+    container.querySelectorAll('input, select, textarea').forEach(function (el) {
+      el.disabled = disabled;
+    });
+  }
+
+  function syncYearMutex() {
+    if (!yearInput || !startYear || !endYear) return;
+    const hasYear = String(yearInput.value || '').trim() !== '';
+    const hasRange = String(startYear.value || '').trim() !== '' || String(endYear.value || '').trim() !== '';
+    if (hasYear) {
+      startYear.value = '';
+      endYear.value = '';
+      startYear.disabled = true;
+      endYear.disabled = true;
+      yearInput.disabled = false;
+    } else if (hasRange) {
+      yearInput.value = '';
+      yearInput.disabled = true;
+      startYear.disabled = false;
+      endYear.disabled = false;
+    } else {
+      yearInput.disabled = false;
+      startYear.disabled = false;
+      endYear.disabled = false;
+    }
+  }
+
+  function syncPanels() {
+    const mode = modeEl ? modeEl.value : 'daily';
+    const isDaily = mode === 'daily';
+    const isAnnual = mode === 'annual_summary';
+    const isScholar = mode === 'google_scholar' || mode === 'high_quality';
+
+    if (panelDaily) panelDaily.hidden = !isDaily;
+    if (panelAnnual) panelAnnual.hidden = !isAnnual;
+    if (panelScholarHint) panelScholarHint.hidden = !isScholar;
+
+    setDisabled(panelDaily, !isDaily);
+    setDisabled(panelAnnual, !isAnnual);
+
+    if (isAnnual) syncYearMutex();
+    if (maxHint) {
+      maxHint.textContent = isAnnual
+        ? '年度模式：每年最多检索篇数'
+        : (isScholar ? '单次检索上限' : 'daily：最近 N 天内最多检索篇数');
+    }
+  }
+
+  if (yearInput) yearInput.addEventListener('input', syncYearMutex);
+  if (startYear) startYear.addEventListener('input', syncYearMutex);
+  if (endYear) endYear.addEventListener('input', syncYearMutex);
+  if (modeEl) modeEl.addEventListener('change', syncPanels);
+  syncPanels();
+
+  form?.addEventListener('submit', function () {
+    syncPanels();
+    const btn = document.getElementById('fetch-submit');
+    if (btn) { btn.disabled = true; btn.textContent = '已启动…'; }
+  });
+})();
+</script>
+{% endblock %}

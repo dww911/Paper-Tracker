@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}本周总结{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Weekly Review</p>
+    <h1>本周总结</h1>
+    <p class="subtitle">把一周论文变成趋势、重点论文和汇报材料。</p>
+  </div>
+  <div class="hero-actions">
+    <a class="button" href="/generate">生成本周 Markdown 周报</a>
+    <a class="button ghost" href="/wechat">推送本周精选</a>
+  </div>
+</section>
+
+<section class="metrics">
+  <div><span class="metric-icon blue">01</span><small>本周新增</small><strong>{{ dashboard_numbers.weekly_new }}</strong><em>论文</em></div>
+  <div><span class="metric-icon red">02</span><small>A+ 必读</small><strong>{{ dashboard_numbers.recommended }}</strong><em>推荐精读</em></div>
+  <div><span class="metric-icon blue">03</span><small>完整摘要</small><strong>{{ dashboard_numbers.abstract_completed }}</strong><em>摘要补全</em></div>
+  <div><span class="metric-icon amber">04</span><small>IF匹配</small><strong>{{ dashboard_numbers.if_matched }}</strong><em>期刊指标</em></div>
+  <div><span class="metric-icon green">05</span><small>已读</small><strong>{{ stats.read_count or 0 }}</strong><em>阅读进度</em></div>
+</section>
+
+<section class="workbench-grid">
+  <div class="main-work">
+    <section class="content-band">
+      <h2>本周最值得读 TOP 5</h2>
+      {% for paper in papers %}
+      <article class="compact-paper">
+        <span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level or "未评级" }}</span>
+        <div>
+          <h3>{{ paper.title }}</h3>
+          <p class="meta">IF {{ paper.impact_factor or "未匹配" }} ｜ 引用 {{ paper.citation_count or 0 }} ｜ 综合分 {{ paper.final_score or 0 }}</p>
+          <p>为什么入选：高相关、适合进入本周趋势和精读候选。</p>
+        </div>
+      </article>
+      {% endfor %}
+    </section>
+  </div>
+  <aside class="right-work">
+    <section class="assistant-card">
+      <h2>本周领域变化总结</h2>
+      <p>本周文献主要集中在相位恢复、4D-STEM 重建质量、低剂量和半导体表征等方向。建议把 A+/A 论文整理成一个组会候选列表。</p>
+    </section>
+    <section class="quick-generate-card">
+      <h2>热门关键词 TOP 10</h2>
+      {% for item in keywords %}
+      <span>{{ item }}</span>
+      {% endfor %}
+    </section>
+  </aside>
+</section>
+{% endblock %}

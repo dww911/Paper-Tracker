@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}灵感笔记{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Ideas</p>
+    <h1>灵感笔记</h1>
+    <p class="subtitle">记录从文献中产生的课题想法、可创新点与后续任务。</p>
+  </div>
+  <a class="button" href="/ideas/new">新建灵感</a>
+</section>
+
+{% if request.query_params.get('saved') == '1' %}
+<p class="notice">已保存灵感{% if request.query_params.get('id') %}（#{{ request.query_params.get('id') }}）{% endif %}。<a href="/ideas/{{ request.query_params.get('id') }}">继续编辑</a></p>
+{% endif %}
+
+<form class="filters" method="get">
+  <select name="profile">
+    <option value="">全部方向</option>
+    {% for item in profiles %}
+    <option value="{{ item.profile_id }}" {% if filters.profile == item.profile_id %}selected{% endif %}>{{ item.display_name or item.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="status">
+    <option value="">全部状态</option>
+    {% for s in ['想法中','验证中','可写小论文','可写综述','已归档'] %}
+    <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">筛选</button>
+</form>
+
+{% if not ideas %}
+<p class="meta">暂无灵感，可从论文详情页「保存为灵感」或点击新建。</p>
+{% else %}
+<ul class="simple-list">
+  {% for idea in ideas %}
+  <li><a href="/ideas/{{ idea.id }}"><strong>{{ idea.title }}</strong></a> — {{ idea.status }} · {{ idea.updated_at }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

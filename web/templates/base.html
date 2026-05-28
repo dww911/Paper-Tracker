@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Research Radar{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/">
+      <span class="brand-mark">RR</span>
+      <span>Research Radar</span>
+    </a>
+    <nav class="side-nav">
+      {% set path = request.url.path %}
+      <a class="{{ 'active' if path == '/' or path.startswith('/fetch') or path.startswith('/runs') or path.startswith('/daily') or path.startswith('/wechat') else '' }}" href="/"><span>⌂</span>今日工作台</a>
+      <a class="{{ 'active' if path.startswith('/library') or path.startswith('/papers') or path.startswith('/annual') or path.startswith('/reading') or path.startswith('/roadmap') else '' }}" href="/library"><span>▦</span>文献库</a>
+      <a class="{{ 'active' if path.startswith('/progress') else '' }}" href="/progress"><span>◔</span>研究进展</a>
+      <a class="{{ 'active' if path.startswith('/ideas') else '' }}" href="/ideas"><span>✎</span>灵感笔记</a>
+      <a class="{{ 'active' if path.startswith('/writing') or path.startswith('/generate') or path.startswith('/weekly') or path.startswith('/archive') else '' }}" href="/writing"><span>✦</span>写作中心</a>
+      <a class="{{ 'active' if path.startswith('/settings') or path.startswith('/profiles') else '' }}" href="/settings"><span>⚙</span>设置</a>
+    </nav>
+    <div class="profile-chip">
+      <span>当前研究方向</span>
+      <strong>{{ current_profile.display_name if current_profile is defined and current_profile else current_profile_id if current_profile_id is defined else "未选择" }}</strong>
+      <a href="/settings#profiles">切换方向</a>
+    </div>
+  </aside>
+  <div class="app-frame">
+    <header class="topbar">
+      <div class="topbar-status">
+        <span>最近更新：{{ latest.run_time if latest is defined and latest else "暂无" }}</span>
+        <span>运行模式：{{ latest.mode if latest is defined and latest else "等待运行" }}</span>
+        <span>状态：{{ "已完成" if latest is defined and latest else "等待首次运行" }}</span>
+      </div>
+      <div class="topbar-actions">
+        <form class="quick-run" method="post" action="/run">
+          <input type="hidden" name="profile" value="{{ current_profile_id if current_profile_id is defined else '' }}">
+          <select name="mode" title="运行模式">
+            <option value="daily" selected>daily</option>
+            <option value="high_quality">high_quality</option>
+          </select>
+          <input type="hidden" name="max_results" value="30">
+          <input type="hidden" name="time_range_days" value="7">
+          <button type="submit">立即运行</button>
+        </form>
+        <a class="button ghost compact" href="/fetch">获取更多</a>
+      </div>
+    </header>
+    <main class="shell">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

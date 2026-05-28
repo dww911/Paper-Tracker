@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}文献库{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Library</p>
+    <h1>文献库</h1>
+    <p class="subtitle">全部入库论文、年度归档、阅读队列与研究脉络。</p>
+  </div>
+  <a class="button" href="/fetch">获取更多文献</a>
+</section>
+
+<section class="hub-grid">
+  <a class="hub-card" href="/papers">
+    <h2>全部文献</h2>
+    <p>按星级、IF、年份、阅读状态筛选；默认显示库内全部论文。</p>
+    <strong>{{ stats.total or 0 }} 篇</strong>
+  </a>
+  <a class="hub-card" href="/annual">
+    <h2>年度文献</h2>
+    <p>按年份浏览 2026 / 2025 / 2024… 年度论文库与导出。</p>
+  </a>
+  <a class="hub-card" href="/reading">
+    <h2>阅读队列</h2>
+    <p>待读、精读中、已读与收藏分组。</p>
+    <strong>待读 {{ stats.unread or 0 }}</strong>
+  </a>
+  <a class="hub-card" href="/roadmap">
+    <h2>研究脉络</h2>
+    <p>高星论文时间线与方向进展报告。</p>
+  </a>
+</section>
+<p class="meta">课题推进仪表盘请使用侧栏 <a href="/progress">研究进展</a>。</p>
+{% endblock %}

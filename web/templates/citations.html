@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}引用生成器{% endblock %}
+{% block content %}
+<section class="page-head">
+  <h1>引用生成器</h1>
+  <p class="subtitle">从文献库加入引用篮，导出 GB/T 7714、APA、IEEE、BibTeX、Markdown。</p>
+</section>
+
+<section class="two-col-flow">
+  <div class="flow-panel">
+    <h2>引用篮</h2>
+    {% if collections %}
+    <p>当前：{% for c in collections %}{% if c.id == collection_id %}{{ c.name }}{% endif %}{% endfor %}（{{ items|length }} 篇）</p>
+    {% endif %}
+    <ul class="simple-list">
+      {% for paper in items %}
+      <li>{{ paper.title }} <span class="meta">{{ paper.year }}</span></li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/citations/export">
+      <input type="hidden" name="collection_id" value="{{ collection_id }}">
+      <label>格式
+        <select name="style">
+          <option value="gbt7714">GB/T 7714</option>
+          <option value="apa">APA</option>
+          <option value="ieee">IEEE</option>
+          <option value="bibtex">BibTeX</option>
+          <option value="markdown">Markdown</option>
+        </select>
+      </label>
+      <button type="submit">生成参考文献</button>
+    </form>
+  </div>
+  <div class="flow-panel">
+    <h2>预览</h2>
+    <pre class="log-preview">{% if preview %}{{ preview }}{% else %}选择格式后点击生成{% endif %}</pre>
+  </div>
+</section>
+<p class="meta">在文献详情页使用「加入引用篮」；综述生成后也可自动填充引用篮（后续版本）。</p>
+{% endblock %}

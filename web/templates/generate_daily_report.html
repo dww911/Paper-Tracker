@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}生成今日日报{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Daily Report</p>
+    <h1>生成今日日报</h1>
+    <p class="subtitle">左侧配置日报内容，右侧预览 Markdown 输出。</p>
+  </div>
+</section>
+
+<section class="two-col-flow wide-preview">
+  <form class="flow-panel" method="post" action="/generate/daily-report">
+    <h2>日报配置</h2>
+    <label>日期<input type="date" value="{{ report_date or '2026-05-27' }}" disabled></label>
+    <label>研究方向<input value="{{ current_profile.display_name or current_profile.name or current_profile_id }}"></label>
+    <div class="option-list">
+      <label><input type="checkbox" checked> 只包含 A+/A 推荐</label>
+      <label><input type="checkbox" checked> 包含过滤原因</label>
+      <label><input type="checkbox" checked> 包含影响因子</label>
+      <label><input type="checkbox" checked> 包含引用数</label>
+      <label><input type="checkbox" checked> 包含今日阅读建议</label>
+      <label><input type="checkbox" checked> 生成单篇笔记链接</label>
+    </div>
+    <label>输出路径<input value="{{ generated_path or 'daily_reports/今日日报.md' }}" readonly></label>
+    <button type="submit">生成 Markdown</button>
+    <a class="button ghost" href="/wechat/push-today">同步到微信摘要</a>
+    {% if generated_path %}
+    <p class="success-text">已生成：{{ generated_path }}</p>
+    {% endif %}
+  </form>
+
+  <section class="flow-panel markdown-preview">
+    <h2>Markdown 预览</h2>
+    {% if markdown_preview %}
+    <pre>{{ markdown_preview }}</pre>
+    {% else %}
+    <pre># 今日文献雷达日报
+
+方向：{{ current_profile.display_name or current_profile.name or current_profile_id }}
+
+## 今日概览
+- 候选论文：{{ dashboard_numbers.total_found }} 篇
+- 完整摘要：{{ dashboard_numbers.abstract_completed }} 篇
+- IF 匹配：{{ dashboard_numbers.if_matched }} 篇
+- 推荐精读：{{ dashboard_numbers.recommended }} 篇
+
+## 今日最值得读 TOP 3
+{% for paper in papers %}
+{{ loop.index }}. {{ paper.title }}（{{ paper.recommendation_level or "未评级" }}）
+   - 期刊：{{ paper.journal or "未知" }}
+   - 综合分：{{ paper.final_score or paper.relevance_score or 0 }}/30
+{% endfor %}
+
+## 今日阅读建议
+优先精读第 1 篇，其他论文进入待读队列或周报候选。</pre>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

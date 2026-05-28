@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ idea.title or '灵感' }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <h1>{{ '新建灵感' if is_new else idea.title }}</h1>
+</section>
+{% if request.query_params.get('error') == 'save_failed' %}
+<p class="notice">保存失败，请重试。{{ request.query_params.get('detail', '') }}</p>
+{% endif %}
+<form class="flow-panel" method="post" action="/ideas/save">
+  {% if not is_new %}<input type="hidden" name="idea_id" value="{{ idea.id }}">{% endif %}
+  <label>标题 <span class="field-hint">留空将自动命名为「未命名灵感」</span>
+    <input name="title" value="{{ idea.title or '' }}" placeholder="例如：低剂量 WDD 加速思路">
+  </label>
+  <label>研究方向
+    <input name="profile_id" value="{{ idea.profile_id or current_profile_id }}">
+  </label>
+  <label>状态
+    <select name="status">
+      {% for s in ['想法中','验证中','可写小论文','可写综述','已归档'] %}
+      <option value="{{ s }}" {% if idea.status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>关联论文 ID（stable_id，可多行）
+    <textarea name="linked_paper_ids" rows="2">{{ idea.linked_paper_ids_json or idea.linked_paper_ids or '' }}</textarea>
+  </label>
+  <label>可能方向 <input name="possible_direction" value="{{ idea.possible_direction or '' }}"></label>
+  <label>后续任务 <textarea name="next_tasks" rows="2">{{ idea.next_tasks or '' }}</textarea></label>
+  <label>Markdown 正文
+    <textarea name="body_md" rows="16" class="notes-editor">{{ idea.body_md or '' }}</textarea>
+  </label>
+  <button type="submit">保存</button>
+</form>
+{% endblock %}

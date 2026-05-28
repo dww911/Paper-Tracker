@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}引言草稿{% endblock %}
+{% block content %}
+<section class="page-head"><h1>论文引言草稿</h1></section>
+{% if generated_path %}<p class="success-text">已保存：{{ generated_path }}</p>{% endif %}
+<pre class="log-preview">{{ markdown_preview or '点击生成以调用 Kimi（需配置 API Key）' }}</pre>
+<form method="post"><button type="submit">生成引言初稿</button></form>
+{% endblock %}

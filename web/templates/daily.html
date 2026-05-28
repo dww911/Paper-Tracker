@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}每日更新{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Daily Update</p>
+    <h1>每日更新</h1>
+    <p class="subtitle">管理每天自动抓取、日报生成和微信推送状态。</p>
+  </div>
+  <a class="button" href="/daily/run">重新运行今日更新</a>
+</section>
+
+<section class="metrics">
+  <div><span class="metric-icon blue">01</span><small>最近候选</small><strong>{{ latest.total_found if latest else 0 }}</strong><em>候选论文</em></div>
+  <div><span class="metric-icon blue">02</span><small>完整摘要</small><strong>{{ dashboard_numbers.abstract_completed }}</strong><em>补全结果</em></div>
+  <div><span class="metric-icon amber">03</span><small>推荐</small><strong>{{ dashboard_numbers.recommended }}</strong><em>A+/A</em></div>
+  <div><span class="metric-icon green">04</span><small>推送</small><strong>{{ dashboard_numbers.pushed }}</strong><em>Server 酱</em></div>
+  <div><span class="metric-icon green">05</span><small>状态</small><strong>{{ "完成" if latest else "等待" }}</strong><em>运行状态</em></div>
+</section>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>日期</th><th>方向</th><th>模式</th><th>候选</th><th>完整摘要</th><th>IF匹配</th><th>推荐</th><th>推送</th><th>日报</th><th>操作</th></tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td>{{ run.run_time }}</td>
+        <td>{{ run.profile }}</td>
+        <td>{{ run.mode }}</td>
+        <td>{{ run.total_found }}</td>
+        <td>{{ run.abstract_completed }}</td>
+        <td>{{ run.if_matched }}</td>
+        <td>{{ run.recommended_count }}</td>
+        <td>{{ run.pushed_count }}</td>
+        <td>{{ run.report_path or "未生成" }}</td>
+        <td class="op-icons"><a href="/">view</a><a href="/generate">edit</a><a href="/wechat">down</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}生成本周总结{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Weekly Generate</p>
+    <h1>生成本周总结</h1>
+    <p class="subtitle">汇总本周热点、TOP 论文、趋势变化和下周阅读计划。</p>
+  </div>
+  <div class="hero-actions">
+    <form method="post" action="/weekly/generate" class="inline-form">
+      <button type="submit">生成 Markdown 周报</button>
+    </form>
+    <form method="post" action="/weekly/generate" class="inline-form">
+      <button type="submit" class="secondary">生成导师汇报版</button>
+    </form>
+  </div>
+</section>
+
+{% if generated_path %}
+<section class="status-banner success">
+  已生成周报：{{ generated_path }}
+</section>
+{% endif %}
+
+<section class="metrics">
+  <div><span class="metric-icon blue">01</span><small>本周新增</small><strong>{{ dashboard_numbers.weekly_new }}</strong><em>论文</em></div>
+  <div><span class="metric-icon red">02</span><small>A+/A</small><strong>{{ dashboard_numbers.recommended }}</strong><em>推荐</em></div>
+  <div><span class="metric-icon blue">03</span><small>完整摘要</small><strong>{{ dashboard_numbers.abstract_completed }}</strong><em>补全</em></div>
+  <div><span class="metric-icon amber">04</span><small>IF匹配</small><strong>{{ dashboard_numbers.if_matched }}</strong><em>指标</em></div>
+  <div><span class="metric-icon green">05</span><small>待读</small><strong>{{ dashboard_numbers.unread }}</strong><em>下周计划</em></div>
+</section>
+
+<section class="two-col-flow wide-preview">
+  <section class="flow-panel">
+    <h2>本周热门关键词</h2>
+    <div class="tag-cloud">
+      {% for item in keywords %}
+      <span>{{ item }}</span>
+      {% endfor %}
+    </div>
+    <h2>本周 TOP 5</h2>
+    {% for paper in papers %}
+    <article class="compact-paper">
+      <span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level or "未评级" }}</span>
+      <div><h3>{{ paper.title }}</h3><p class="meta">{{ paper.journal or "未知" }} ｜ {{ paper.final_score or 0 }}/30</p></div>
+    </article>
+    {% endfor %}
+  </section>
+  <section class="flow-panel markdown-preview">
+    <h2>AI 周报草稿</h2>
+    {% if markdown_preview %}
+    <pre>{{ markdown_preview }}</pre>
+    {% else %}
+    <pre>本周文献主要集中在三个方向：
+1. 4D-STEM ptychography 重建质量优化
+2. 深度学习辅助 phase retrieval
+3. 半导体材料中的 strain / atomic-resolution 表征
+
+下周建议：
+- 优先精读 TOP 1 和 TOP 2
+- 将深度学习重建方向单独建专题
+- 把 A+/A 论文整理进组会汇报版</pre>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

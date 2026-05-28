@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}数据归档{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Archive</p>
+    <h1>数据归档</h1>
+    <p class="subtitle">管理 SQLite、Excel、Markdown 日报和单篇 paper_notes。</p>
+  </div>
+</section>
+
+<section class="archive-grid">
+  <article class="archive-card">
+    <h2>Excel 总文献库</h2>
+    <p>{{ excel_path }}</p>
+    <strong>{{ "已生成" if excel_exists else "未生成" }}</strong>
+    <div class="actions"><a class="button ghost" href="/generate">重新导出</a></div>
+  </article>
+  <article class="archive-card">
+    <h2>Markdown 日报</h2>
+    <p>{{ daily_report_path }}</p>
+    <strong>{{ "目录存在" if daily_report_exists else "未生成" }}</strong>
+    <div class="actions"><a class="button ghost" href="/generate">生成日报</a></div>
+  </article>
+  <article class="archive-card">
+    <h2>单篇精读笔记</h2>
+    <p>{{ paper_notes_path }}</p>
+    <strong>已生成 {{ note_count }} 篇</strong>
+    <div class="actions"><a class="button ghost" href="/reading">批量生成</a></div>
+  </article>
+  <article class="archive-card">
+    <h2>SQLite 数据库</h2>
+    <p>{{ db_path }}</p>
+    <strong>{{ dashboard_numbers.total }} 篇论文</strong>
+    <div class="actions"><a class="button ghost" href="/papers">查看文献库</a></div>
+  </article>
+</section>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}研究脉络{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Roadmap</p>
+    <h1>研究方向进展脉络</h1>
+    <p class="subtitle">基于高星与里程碑论文生成时间线与追踪建议（输出至 roadmap_reports/）。</p>
+  </div>
+</section>
+
+{% if request.query_params.get('generated') %}
+<p class="success-text">已生成报告：{{ request.query_params.get('generated') }}</p>
+{% endif %}
+
+<form class="flow-panel" method="post" action="/roadmap/generate">
+  <label>研究方向
+    <select name="profile">
+      {% for item in profiles %}
+      <option value="{{ item.profile_id }}" {% if item.profile_id == current_profile_id %}selected{% endif %}>{{ item.display_name or item.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>最低星级
+    <select name="min_rating">
+      <option value="5">5 星</option>
+      <option value="4" selected>4 星及以上</option>
+      <option value="3">3 星及以上</option>
+    </select>
+  </label>
+  <button type="submit">生成脉络报告</button>
+</form>
+
+<section class="content-band">
+  <h2>候选论文（{{ papers|length }} 篇）</h2>
+  {% if not papers %}
+  <p>暂无高星论文，请先运行 daily 获取更多文献。</p>
+  {% else %}
+  <ul class="simple-list">
+    {% for paper in papers %}
+    <li>{{ (paper.display_rating or 3)|stars }} <a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a> ({{ paper.year }})</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+{% if reports %}
+<section class="content-band">
+  <h2>历史报告</h2>
+  <ul>{% for name in reports %}<li>{{ name }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

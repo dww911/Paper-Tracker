@@ -1,0 +1,241 @@
+{
+  "default_profile": "electron_ptychography",
+  "profiles": {
+    "electron_ptychography": {
+      "name": "电子显微 Ptychography / 4D-STEM",
+      "display_name": "Electron Ptychography / 4D-STEM",
+      "description": "面向电子显微、4D-STEM、电子ptychography、相位恢复和WDD相关研究的默认方向。",
+      "include_keywords": [
+        "electron ptychography",
+        "4D-STEM",
+        "4D STEM",
+        "scanning transmission electron microscopy",
+        "STEM",
+        "phase retrieval",
+        "WDD",
+        "single sideband",
+        "differential phase contrast"
+      ],
+      "exclude_keywords": [
+        "X-ray",
+        "x ray",
+        "synchrotron",
+        "optical ptychography",
+        "laser",
+        "coherent diffraction imaging"
+      ],
+      "must_have_any": [
+        "ptychography",
+        "4D-STEM",
+        "4D STEM",
+        "phase retrieval",
+        "electron microscopy"
+      ],
+      "research_focus": [
+        "electron microscopy",
+        "semiconductor",
+        "atomic resolution",
+        "strain mapping",
+        "low dose"
+      ],
+      "arxiv_categories": [
+        "physics.app-ph",
+        "physics.ins-det",
+        "cond-mat.mtrl-sci"
+      ],
+      "sources": [
+        "arxiv",
+        "semantic_scholar",
+        "google_scholar"
+      ],
+      "default_sources": {
+        "arxiv": true,
+        "semantic_scholar": true,
+        "google_scholar": false
+      },
+      "score_rules": {
+        "title_keyword": 3,
+        "abstract_keyword": 1,
+        "research_focus": 2,
+        "exclude_keyword": -5,
+        "must_have_bonus": 2,
+        "min_score": 3
+      },
+      "score_threshold": 5,
+      "ingest_min_score": 1,
+      "ingest_below_must_have": true,
+      "parse_template": "electron_ptychography",
+      "parse_focus": [
+        "说明论文与电子显微、4D-STEM或电子ptychography的直接关系。",
+        "重点关注相位恢复、剂量、分辨率、采样、收敛速度、WDD/SSB/ePIE/Wirtinger flow等算法线索。",
+        "给出可落地的后续创新点，避免泛泛而谈。"
+      ],
+      "output_fields": [
+        "论文名字",
+        "网址",
+        "期刊",
+        "影响因子",
+        "发布时间",
+        "摘要中文翻译",
+        "研究背景",
+        "论文创新点",
+        "实验结果",
+        "总结",
+        "未来展望",
+        "可创新点"
+      ]
+    },
+    "xray_ptychography": {
+      "name": "X-ray Ptychography / CDI",
+      "display_name": "X-ray Ptychography / CDI",
+      "description": "面向X射线ptychography、同步辐射、相干衍射成像和纳米成像研究。",
+      "include_keywords": [
+        "X-ray ptychography",
+        "x ray ptychography",
+        "coherent diffraction imaging",
+        "synchrotron",
+        "phase retrieval",
+        "nanotomography"
+      ],
+      "exclude_keywords": [
+        "electron microscopy",
+        "4D-STEM",
+        "STEM",
+        "optical ptychography"
+      ],
+      "must_have_any": [
+        "ptychography",
+        "coherent diffraction imaging",
+        "phase retrieval"
+      ],
+      "research_focus": [
+        "synchrotron",
+        "nanotomography",
+        "coherent imaging",
+        "phase retrieval"
+      ],
+      "arxiv_categories": [
+        "physics.optics",
+        "physics.ins-det"
+      ],
+      "sources": [
+        "arxiv",
+        "semantic_scholar",
+        "google_scholar"
+      ],
+      "default_sources": {
+        "arxiv": true,
+        "semantic_scholar": true,
+        "google_scholar": false
+      },
+      "score_rules": {
+        "title_keyword": 3,
+        "abstract_keyword": 1,
+        "research_focus": 2,
+        "exclude_keyword": -5,
+        "must_have_bonus": 2,
+        "min_score": 3
+      },
+      "score_threshold": 5,
+      "ingest_min_score": 1,
+      "ingest_below_must_have": true,
+      "parse_template": "generic_imaging",
+      "parse_focus": [
+        "关注相干光源、扫描策略、相位恢复算法、空间分辨率和样品适用性。",
+        "区分实验光源、探测器、重构算法和定量成像结果。"
+      ],
+      "output_fields": [
+        "论文名字",
+        "网址",
+        "期刊",
+        "影响因子",
+        "发布时间",
+        "摘要中文翻译",
+        "研究背景",
+        "论文创新点",
+        "实验结果",
+        "总结",
+        "未来展望",
+        "可创新点"
+      ]
+    },
+    "medical_ai": {
+      "name": "医学影像 AI",
+      "display_name": "Medical Imaging AI",
+      "description": "面向医学影像分割、诊断、预测、深度学习模型和临床转化研究。",
+      "include_keywords": [
+        "medical imaging",
+        "deep learning",
+        "segmentation",
+        "diagnosis",
+        "radiology",
+        "MRI",
+        "CT",
+        "ultrasound"
+      ],
+      "exclude_keywords": [
+        "non-medical",
+        "natural image"
+      ],
+      "must_have_any": [
+        "medical imaging",
+        "radiology",
+        "MRI",
+        "CT",
+        "ultrasound"
+      ],
+      "research_focus": [
+        "clinical validation",
+        "segmentation",
+        "diagnosis",
+        "external validation",
+        "dataset"
+      ],
+      "arxiv_categories": [
+        "cs.CV",
+        "eess.IV",
+        "cs.AI",
+        "cs.LG"
+      ],
+      "sources": [
+        "arxiv",
+        "semantic_scholar"
+      ],
+      "default_sources": {
+        "arxiv": true,
+        "semantic_scholar": true,
+        "google_scholar": false
+      },
+      "score_rules": {
+        "title_keyword": 3,
+        "abstract_keyword": 1,
+        "research_focus": 2,
+        "exclude_keyword": -5,
+        "must_have_bonus": 2,
+        "min_score": 3
+      },
+      "score_threshold": 5,
+      "ingest_min_score": 1,
+      "ingest_below_must_have": true,
+      "parse_template": "medical_ai",
+      "parse_focus": [
+        "明确临床问题、数据集来源、模型结构、评价指标、对照方法和临床可用性。",
+        "指出偏倚、泛化性、外部验证和可复现实验风险。"
+      ],
+      "output_fields": [
+        "论文名字",
+        "网址",
+        "期刊",
+        "影响因子",
+        "发布时间",
+        "摘要中文翻译",
+        "研究背景",
+        "论文创新点",
+        "实验结果",
+        "总结",
+        "未来展望",
+        "可创新点"
+      ]
+    }
+  }
+}

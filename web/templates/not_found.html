@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}未找到{% endblock %}
+{% block content %}
+<section class="empty">
+  <h1>没有找到这篇论文</h1>
+  <p>{{ paper_id }}</p>
+  <a class="button" href="/papers">返回文献库</a>
+</section>
+{% endblock %}

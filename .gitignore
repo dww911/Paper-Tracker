@@ -1,0 +1,41 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Local editor and machine state
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# Runtime outputs and generated archives
+.agents/skills/daily_reports/
+.claude/skills/daily_reports/
+.agents/skills/Ptychography_论文全量库.xlsx
+.claude/skills/Ptychography_论文全量库.xlsx
+.agents/skills/Ptychography论文解析汇总.md
+.claude/skills/Ptychography论文解析汇总.md
+.agents/skills/research_radar.db
+.agents/skills/research_radar.db-*
+.agents/skills/weekly_reports/
+.agents/skills/annual_reports/
+.agents/skills/exports/
+.agents/skills/my_notes/
+.agents/skills/review_reports/
+.agents/skills/paper_notes/
+.agents/skills/ptychography-paper-tracker/journal_metrics.csv
+research_radar.db
+research_radar.db-*
+web_run.log
+
+# Local paper histories can contain private tracking state.
+paper_history.json
+.agents/skills/ptychography-paper-tracker/paper_history.json
+.claude/skills/ptychography-paper-tracker/paper_history.json

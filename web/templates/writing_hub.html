@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}写作中心{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Writing</p>
+    <h1>写作中心</h1>
+    <p class="subtitle">日报、周报、综述、组会汇报、引言草稿与引用导出。</p>
+  </div>
+</section>
+
+<section class="hub-grid">
+  <a class="hub-card" href="/writing/daily-report">
+    <h2>今日日报</h2>
+    <p>基于今日入库与高星论文生成 Markdown 日报。</p>
+  </a>
+  <a class="hub-card" href="/writing/weekly">
+    <h2>本周总结</h2>
+    <p>过去 7 天入库论文趋势周报。</p>
+  </a>
+  <a class="hub-card" href="/writing/review" id="review">
+    <h2>一键综述</h2>
+    <p>综述资料包：outline + draft + 文献表（非投稿终稿）。</p>
+  </a>
+  <a class="hub-card" href="/writing/seminar">
+    <h2>组会汇报</h2>
+    <p>本周重点论文组会提纲。</p>
+  </a>
+  <a class="hub-card" href="/writing/intro-draft">
+    <h2>论文引言草稿</h2>
+    <p>基于高星文献生成引言初稿。</p>
+  </a>
+  <a class="hub-card" href="/citations">
+    <h2>引用生成器</h2>
+    <p>引用篮：GB/T 7714、APA、IEEE、BibTeX 等。</p>
+  </a>
+  <a class="hub-card" href="/archive">
+    <h2>数据归档</h2>
+    <p>Excel / Markdown 导出与路径说明。</p>
+  </a>
+  <a class="hub-card" href="/annual">
+    <h2>年度报告</h2>
+    <p>年度文献库 Markdown / Excel 导出。</p>
+  </a>
+</section>
+<p class="meta disclaimer">AI 生成内容仅作初稿，请人工核对原文、引用与事实。</p>
+{% endblock %}

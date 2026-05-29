@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">Library</p>
     <h1>文献库</h1>
-    <p class="subtitle">SQLite 主库全部论文；按星级（用户优先于系统）筛选与排序。</p>
+    <p class="subtitle">全部入库论文；优先检查原文、PDF、DOI、引用数和阅读状态。</p>
   </div>
   <div class="hero-actions">
     <a class="button" href="/fetch">获取更多文献</a>
@@ -91,23 +91,34 @@
   <table>
     <thead>
       <tr>
-        <th>标题</th><th>星级</th><th>年份</th><th>期刊指标</th><th>综合分</th><th>阅读</th><th>操作</th>
+        <th>标题</th><th>星级</th><th>阅读</th><th>年份</th><th>原文</th><th>DOI</th><th>引用</th><th>期刊质量</th><th>操作</th>
       </tr>
     </thead>
     <tbody>
       {% for paper in papers %}
       <tr>
         <td class="title-cell">
-          {% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank">{{ paper.title }}</a>{% else %}{{ paper.title }}{% endif %}
+          <a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a>
+          <div class="row-subtitle">{{ paper.journal or "未知期刊" }}</div>
         </td>
         <td>{{ (paper.display_rating or 1)|stars }}</td>
+        <td><span class="status-pill status-{{ paper.reading_status or 'unread' }}">{{ paper.reading_status or "unread" }}</span></td>
         <td>{{ paper.year or "" }}</td>
+        <td class="link-cell">
+          {% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank" rel="noopener">原文</a>{% else %}<span class="muted">缺失</span>{% endif %}
+          {% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+        </td>
+        <td class="doi-cell">
+          {% if paper.doi_url %}<a href="{{ paper.doi_url }}" target="_blank" rel="noopener">{{ paper.doi or "DOI" }}</a>
+          {% elif paper.doi %}{{ paper.doi }}
+          {% else %}<span class="muted">未补全</span>{% endif %}
+        </td>
+        <td>{{ paper.citation_count or 0 }}</td>
         <td class="journal-rank-cell"><small>{{ paper.journal or "" }}</small><br>{{ paper|journal_rank }}</td>
-        <td>{{ paper.final_score or 0 }}</td>
-        <td>{{ "已读" if paper.reading_status == "read" else "未读" }}</td>
-        <td class="op-icons">
+        <td class="op-links">
           <a href="/papers/{{ paper.stable_id }}">详情</a>
-          {% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank">PDF</a>{% endif %}
+          <a href="/papers/{{ paper.stable_id }}#my-notes">笔记</a>
+          <a href="/ideas/new?from_paper={{ paper.stable_id }}">灵感</a>
         </td>
       </tr>
       {% endfor %}

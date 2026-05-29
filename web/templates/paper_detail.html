@@ -7,7 +7,9 @@
     <h1>{% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank" rel="noopener">{{ paper.title }}</a>{% else %}{{ paper.title }}{% endif %}</h1>
     <p class="meta">{{ paper.authors|authors }} · {{ paper.year or "未知年份" }}</p>
     <p class="detail-meta-line">
-      DOI：{% if paper.doi_url %}<a href="{{ paper.doi_url }}" target="_blank">{{ paper.doi }}</a>{% else %}{{ paper.doi or "未补全" }}{% endif %}
+      原文：{% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank" rel="noopener">打开</a>{% else %}未补全{% endif %}
+      <span>PDF：{% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank" rel="noopener">打开</a>{% else %}未上传/未发现{% endif %}</span>
+      <span>DOI：{% if paper.doi_url %}<a href="{{ paper.doi_url }}" target="_blank">{{ paper.doi }}</a>{% else %}{{ paper.doi or "未补全" }}{% endif %}</span>
       <span>摘要：{{ paper.abstract_source or "missing" }}</span>
       <span>引用数：{{ paper.citation_count or 0 }}</span>
     </p>
@@ -23,31 +25,33 @@
 <div class="actions detail-actions">
   {% if paper|paper_url %}<a class="button" href="{{ paper|paper_url }}" target="_blank">打开原文</a>{% endif %}
   {% if paper.pdf_url %}<a class="button ghost" href="{{ paper.pdf_url }}" target="_blank">PDF</a>{% endif %}
+  {% if paper.doi_url %}<a class="button ghost" href="{{ paper.doi_url }}" target="_blank">DOI</a>{% endif %}
   {% if paper.arxiv_url %}<a class="button ghost" href="{{ paper.arxiv_url }}" target="_blank">arXiv</a>{% endif %}
   {% if paper.scholar_url %}<a class="button ghost" href="{{ paper.scholar_url }}" target="_blank">Scholar</a>{% endif %}
-  <a class="button ghost" href="/papers/{{ paper.stable_id }}/export">导出 Markdown</a>
   <form method="post" action="/papers/{{ paper.stable_id }}/read"><button type="submit">标记已读</button></form>
   <form method="post" action="/papers/{{ paper.stable_id }}/favorite"><button type="submit">{{ "取消收藏" if paper.favorite else "收藏" }}</button></form>
   <form method="post" action="/papers/{{ paper.stable_id }}/review-toggle"><button type="submit">{{ "移出综述资料包" if paper.included_in_review else "加入综述资料包" }}</button></form>
-  <form method="post" action="/papers/{{ paper.stable_id }}/generate-notes"><button type="submit" class="secondary">重新生成 AI 解析</button></form>
   <a class="button ghost" href="/ideas/new?from_paper={{ paper.stable_id }}">保存为灵感</a>
   <form method="post" action="/citations/add" class="inline-form">
     <input type="hidden" name="paper_id" value="{{ paper.stable_id }}">
     <button type="submit" class="secondary">加入引用篮</button>
   </form>
+  <a class="button ghost" href="/papers/{{ paper.stable_id }}/export">导出 Markdown</a>
 </div>
 
 {% if request.query_params.get('pdf_uploaded') %}
-<p class="success-text">PDF 已上传并提取文本。</p>
+<p class="success-text">PDF 已上传并提取文本。{% if request.query_params.get('pdf_ai') == '1' %}AI 精读笔记已更新。{% elif request.query_params.get('template') == '1' %}已生成 Markdown 笔记模板，可继续手写补充。{% endif %}</p>
 {% elif request.query_params.get('pdf_error') %}
 <p class="notice">{{ request.query_params.get('pdf_error') }}</p>
 {% endif %}
 
 <form class="flow-panel" method="post" action="/papers/{{ paper.stable_id }}/upload-pdf" enctype="multipart/form-data">
-  <label>上传 PDF 精读（PyMuPDF）
+  <h2>PDF 上传精读</h2>
+  <p class="meta">上传后会保存 PDF、抽取正文、自动补 DOI；配置 AI Key 时会基于 PDF 正文刷新精读笔记，否则生成 Markdown 模板供手写。</p>
+  <label>选择 PDF
     <input type="file" name="file" accept=".pdf">
   </label>
-  <button type="submit">上传并提取</button>
+  <button type="submit">上传并精读</button>
 </form>
 
 {% if ai_status == 'no_key' %}
@@ -96,7 +100,10 @@
 </section>
 
 <section class="content-band">
-  <h2>AI 摘要阅读</h2>
+  <div class="section-head compact">
+    <h2>AI / PDF 精读摘要</h2>
+    <form method="post" action="/papers/{{ paper.stable_id }}/generate-notes" class="inline-form"><button type="submit" class="secondary">重新生成 AI 解析</button></form>
+  </div>
   <div class="note-grid">
     <article><h3>论文主题</h3><p>{{ note.paper_topic or paper.title or "待生成" }}</p></article>
     <article><h3>研究背景</h3><p>{{ note.research_background or "待生成" }}</p></article>
@@ -111,7 +118,10 @@
 </section>
 
 <section class="content-band" id="my-notes">
-  <h2>我的笔记</h2>
+  <div class="section-head compact">
+    <h2>我的 Markdown 笔记</h2>
+    <a class="button ghost compact" href="/ideas/new?from_paper={{ paper.stable_id }}">从笔记形成灵感</a>
+  </div>
   {% if my_notes_saved %}<p class="success-text">笔记已保存。</p>{% endif %}
   <form method="post" action="/papers/{{ paper.stable_id }}/my-notes">
     <textarea name="content" rows="18" class="notes-editor">{{ my_notes }}</textarea>

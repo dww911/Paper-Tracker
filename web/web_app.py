@@ -71,6 +71,7 @@ from abstract_translate import ensure_paper_chinese_abstract, is_missing_zh  # n
 from paper_ai_parse import (  # noqa: E402
     ai_parse_configured,
     call_llm,
+    parse_structured_fields,
     note_needs_generation,
     parse_paper_with_ai,
     parsed_to_reading_note_payload,
@@ -1848,6 +1849,62 @@ def ensure_ai_reading_note(paper: dict, note: dict, force: bool = False) -> tupl
     return refreshed, "generated"
 
 
+def build_pdf_parse_prompt(paper: dict, profile: dict, pdf_text: str) -> str:
+    focus_lines = "\n".join(f"- {item}" for item in profile.get("parse_focus", []))
+    return f"""你是科研人员的论文精读助手。请基于上传 PDF 抽取文本完成结构化中文精读。
+要求：只根据提供文本，不要编造；文本缺失时明确写“PDF 文本未覆盖，需人工确认”；输出要可直接转成 Markdown 笔记。
+
+【研究方向】
+{profile.get('display_name') or profile.get('name') or profile.get('id') or '当前方向'}
+{focus_lines}
+
+【论文信息】
+标题：{paper.get('title') or ''}
+期刊：{paper.get('journal') or ''}
+年份：{paper.get('year') or ''}
+DOI：{paper.get('doi') or ''}
+原文链接：{paper_display_url(paper)}
+
+【PDF 正文节选】
+{pdf_text[:24000]}
+
+请严格按以下字段输出，每段以【字段名】：开头：
+【摘要中文翻译】：
+【研究背景】：
+【研究目的】：
+【核心方法】：
+【论文创新点】：
+【实验结果】：
+【总结】：
+【未来展望】：
+【可创新点】：
+【对我的启发】：
+【是否值得精读】：
+"""
+
+
+def ensure_pdf_reading_note(paper: dict, pdf_text: str) -> tuple[dict, str]:
+    if not ai_parse_configured():
+        if not load_my_notes(paper):
+            save_my_notes(paper, default_my_notes_template(paper, {}))
+        return {}, "template"
+    profile = load_profile_for_paper(paper)
+    raw = call_llm(build_pdf_parse_prompt(paper, profile, pdf_text))
+    parsed = parse_structured_fields(raw or "")
+    if not parsed:
+        if not load_my_notes(paper):
+            save_my_notes(paper, default_my_notes_template(paper, {}))
+        return {}, "failed"
+    payload = parsed_to_reading_note_payload(paper, parsed)
+    save_reading_note_for_paper(paper["stable_id"], payload)
+    if parsed.get("摘要中文翻译") and is_missing_zh(paper.get("abstract_zh")):
+        update_paper_abstract_zh(paper["stable_id"], parsed["摘要中文翻译"])
+    refreshed = row("SELECT * FROM reading_notes WHERE paper_id = ?", (paper["stable_id"],)) or {}
+    if not load_my_notes(paper):
+        save_my_notes(paper, default_my_notes_template(paper, refreshed))
+    return refreshed, "generated"
+
+
 @app.get("/papers/{paper_id}")
 def paper_detail(request: Request, paper_id: str):
     paper = row(f"SELECT *, {RATING_SQL} AS display_rating FROM papers WHERE stable_id = ?", (paper_id,))
@@ -2733,7 +2790,7 @@ def progress_metrics(profile_id: str) -> dict:
         """
         SELECT
             COUNT(*) AS ideas_count,
-            SUM(CASE WHEN status IN ('可写小论文', '可写综述') THEN 1 ELSE 0 END) AS idea_writable,
+            SUM(CASE WHEN status IN ('准备实验', '准备写作') THEN 1 ELSE 0 END) AS idea_writable,
             SUM(CASE WHEN linked_paper_ids_json IS NOT NULL AND linked_paper_ids_json != '' THEN 1 ELSE 0 END) AS ideas_linked
         FROM ideas WHERE profile_id = ?
         """,
@@ -2809,7 +2866,7 @@ def progress_yearly_counts(profile_id: str) -> list[dict]:
     rows_out = rows(
         """
         SELECT y, COUNT(*) AS c FROM (
-            SELECT COALESCE(year, CAST(substr(COALESCE(published_date, created_at), 1, 4) AS INTEGER)) AS y
+            SELECT COALESCE(publication_year, year, CAST(substr(COALESCE(created_at, updated_at), 1, 4) AS INTEGER)) AS y
             FROM papers WHERE profile_id = ?
         )
         WHERE y IS NOT NULL AND y > 1900
@@ -2870,10 +2927,10 @@ def progress_suggestions(profile_id: str, profile_obj: dict, metrics: dict, keyw
     total = int(metrics.get("total") or 0)
     if total < 20:
         tips.append("当前文献积累不足，建议先点击「补全文献」或运行 annual_summary 年度模式。")
-    current_year = current_year()
+    this_year = current_year()
     yearly = {y["year"]: y["count"] for y in progress_yearly_counts(profile_id)}
-    if yearly.get(current_year, 0) < max(5, total // 15):
-        tips.append(f"建议补充 {current_year} 年最新文献（当前仅 {yearly.get(current_year, 0)} 篇）。")
+    if yearly.get(this_year, 0) < max(5, total // 15):
+        tips.append(f"建议补充 {this_year} 年最新文献（当前仅 {yearly.get(this_year, 0)} 篇）。")
     low_kw = [k["keyword"] for k in keywords if k.get("low")][:4]
     if low_kw:
         tips.append(f"关键词覆盖偏弱：{', '.join(low_kw)}，建议在获取更多文献时放宽检索或补充 Google Scholar。")
@@ -3093,14 +3150,32 @@ def ideas_list(request: Request, profile: str = "", status: str = ""):
 @app.get("/ideas/new")
 def ideas_new(request: Request, from_paper: str = ""):
     context = common_context(request)
-    prefill = {"title": "", "body_md": "", "status": "想法中", "linked_paper_ids": ""}
+    prefill = {
+        "title": "",
+        "body_md": "",
+        "status": "想法中",
+        "linked_paper_ids": "",
+        "profile_id": context.get("current_profile_id", ""),
+        "possible_direction": "",
+        "next_tasks": "",
+    }
     if from_paper:
         paper = row("SELECT * FROM papers WHERE stable_id = ?", (from_paper,))
         note = row("SELECT * FROM reading_notes WHERE paper_id = ?", (from_paper,)) or {}
         if paper:
             prefill["title"] = f"灵感：{(paper.get('title') or '')[:80]}"
             prefill["linked_paper_ids"] = from_paper
-            prefill["body_md"] = note.get("possible_ideas") or note.get("inspiration") or ""
+            prefill["profile_id"] = paper.get("profile_id") or prefill["profile_id"]
+            prefill["possible_direction"] = note.get("possible_ideas") or ""
+            prefill["next_tasks"] = "1. 回到原文核对方法和实验设置\n2. 判断是否能转成实验方案或写作段落"
+            prefill["body_md"] = "\n\n".join(
+                part for part in [
+                    f"## 来源论文\n- {paper.get('title')}\n- {paper_display_url(paper)}",
+                    f"## 对我的启发\n{note.get('inspiration') or ''}",
+                    f"## 可跟进方向\n{note.get('possible_ideas') or ''}",
+                    "## 下一步\n- ",
+                ] if part.strip()
+            )
     return templates.TemplateResponse(request, "idea_edit.html", {**context, "idea": prefill, "is_new": True})
 
 
@@ -3259,7 +3334,10 @@ async def upload_paper_pdf(paper_id: str, file: UploadFile = File(...)):
     )
     if meta.get("doi") and not paper.get("doi"):
         execute("UPDATE papers SET doi = ? WHERE stable_id = ?", (meta["doi"], paper_id))
-    return RedirectResponse(f"/papers/{paper_id}?pdf_uploaded=1", status_code=303)
+    refreshed = row("SELECT * FROM papers WHERE stable_id = ?", (paper_id,)) or paper
+    _, pdf_status = ensure_pdf_reading_note(refreshed, result.get("text", ""))
+    suffix = "pdf_ai=1" if pdf_status == "generated" else "template=1" if pdf_status == "template" else "pdf_ai=failed"
+    return RedirectResponse(f"/papers/{paper_id}?pdf_uploaded=1&{suffix}#my-notes", status_code=303)
 
 
 @app.post("/papers/bulk-status")

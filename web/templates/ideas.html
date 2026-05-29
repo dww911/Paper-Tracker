@@ -5,7 +5,7 @@
   <div>
     <p class="eyebrow">Ideas</p>
     <h1>灵感笔记</h1>
-    <p class="subtitle">记录从文献中产生的课题想法、可创新点与后续任务。</p>
+    <p class="subtitle">把单篇精读里的启发沉淀成可实验、可写作、可归档的研究想法。</p>
   </div>
   <a class="button" href="/ideas/new">新建灵感</a>
 </section>
@@ -23,7 +23,7 @@
   </select>
   <select name="status">
     <option value="">全部状态</option>
-    {% for s in ['想法中','验证中','可写小论文','可写综述','已归档'] %}
+    {% for s in ['想法中','准备实验','准备写作','已归档'] %}
     <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
     {% endfor %}
   </select>
@@ -31,12 +31,22 @@
 </form>
 
 {% if not ideas %}
-<p class="meta">暂无灵感，可从论文详情页「保存为灵感」或点击新建。</p>
+<section class="empty"><h2>暂无灵感</h2><p>可从论文详情页点击「保存为灵感」，系统会带入论文、AI 精读启发和可跟进方向。</p></section>
 {% else %}
-<ul class="simple-list">
+<section class="idea-list">
   {% for idea in ideas %}
-  <li><a href="/ideas/{{ idea.id }}"><strong>{{ idea.title }}</strong></a> — {{ idea.status }} · {{ idea.updated_at }}</li>
+  <article class="idea-card">
+    <div>
+      <a href="/ideas/{{ idea.id }}"><strong>{{ idea.title }}</strong></a>
+      <p>{{ idea.possible_direction or idea.body_md or "暂无摘要" }}</p>
+    </div>
+    <dl>
+      <dt>状态</dt><dd>{{ idea.status }}</dd>
+      <dt>关联论文</dt><dd>{{ "已关联" if idea.linked_paper_ids_json else "未关联" }}</dd>
+      <dt>更新</dt><dd>{{ idea.updated_at }}</dd>
+    </dl>
+  </article>
   {% endfor %}
-</ul>
+</section>
 {% endif %}
 {% endblock %}

@@ -1,5 +1,5 @@
 requests
-pymupdf>=2.31.0 
+pymupdf>=1.23.0 
 
 feedparser>=6.0.11 
 
@@ -10,7 +10,7 @@ openpyxl>=3.1.0
 python-dotenv>=1.0.0
 google-search-results>=2.4.2
 PyYAML>=6.0.1
-fastapi>=0.111.0
+fastapi==0.111.0
 uvicorn>=0.30.0
 jinja2>=3.1.0
 python-multipart>=0.0.9

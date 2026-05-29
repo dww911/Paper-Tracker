@@ -5,30 +5,42 @@
   <div>
     <p class="eyebrow">Library</p>
     <h1>文献库</h1>
-    <p class="subtitle">全部入库论文、年度归档、阅读队列与研究脉络。</p>
+    <p class="subtitle">从发现文献到长期归档的主库入口：全部入库、筛选、精读、导出。</p>
   </div>
-  <a class="button" href="/fetch">获取更多文献</a>
+  <div class="hero-actions">
+    <a class="button" href="/fetch">获取更多文献</a>
+    <a class="button ghost" href="/papers">进入全部文献</a>
+    <a class="button ghost" href="/archive/export-excel">导出 Excel</a>
+  </div>
 </section>
 
 <section class="hub-grid">
   <a class="hub-card" href="/papers">
     <h2>全部文献</h2>
-    <p>按星级、IF、年份、阅读状态筛选；默认显示库内全部论文。</p>
+    <p>按星级、IF、年份、阅读状态筛选，查看原文链接、PDF、DOI 和引用数。</p>
     <strong>{{ stats.total or 0 }} 篇</strong>
   </a>
-  <a class="hub-card" href="/annual">
-    <h2>年度文献</h2>
-    <p>按年份浏览 2026 / 2025 / 2024… 年度论文库与导出。</p>
-  </a>
   <a class="hub-card" href="/reading">
-    <h2>阅读队列</h2>
-    <p>待读、精读中、已读与收藏分组。</p>
+    <h2>精读笔记</h2>
+    <p>待读、精读中、已读与收藏分组，进入单篇 Markdown 笔记。</p>
     <strong>待读 {{ stats.unread or 0 }}</strong>
+  </a>
+  <a class="hub-card" href="/annual">
+    <h2>年度归档</h2>
+    <p>按年份浏览年度论文库，导出 Markdown / Excel。</p>
   </a>
   <a class="hub-card" href="/roadmap">
     <h2>研究脉络</h2>
-    <p>高星论文时间线与方向进展报告。</p>
+    <p>高星论文时间线，辅助判断哪些论文应该优先精读。</p>
+  </a>
+  <a class="hub-card" href="/archive">
+    <h2>长期归档</h2>
+    <p>查看 Excel、Markdown 日报、精读笔记和导出目录。</p>
+  </a>
+  <a class="hub-card" href="/progress">
+    <h2>进展与写作</h2>
+    <p>把文献积累转成综述准备度、报告和引用输出。</p>
   </a>
 </section>
-<p class="meta">课题推进仪表盘请使用侧栏 <a href="/progress">研究进展</a>。</p>
+<p class="meta">建议日常顺序：获取文献 → 全部文献筛选 → 单篇精读 → 灵感 → 进展与写作。</p>
 {% endblock %}

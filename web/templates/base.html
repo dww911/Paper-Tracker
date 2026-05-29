@@ -15,17 +15,19 @@
     <nav class="side-nav">
       {% set path = request.url.path %}
       <a class="{{ 'active' if path == '/' or path.startswith('/fetch') or path.startswith('/runs') or path.startswith('/daily') or path.startswith('/wechat') else '' }}" href="/"><span>⌂</span>今日工作台</a>
-      <a class="{{ 'active' if path.startswith('/library') or path.startswith('/papers') or path.startswith('/annual') or path.startswith('/reading') or path.startswith('/roadmap') else '' }}" href="/library"><span>▦</span>文献库</a>
-      <a class="{{ 'active' if path.startswith('/progress') else '' }}" href="/progress"><span>◔</span>研究进展</a>
-      <a class="{{ 'active' if path.startswith('/ideas') else '' }}" href="/ideas"><span>✎</span>灵感笔记</a>
-      <a class="{{ 'active' if path.startswith('/writing') or path.startswith('/generate') or path.startswith('/weekly') or path.startswith('/archive') else '' }}" href="/writing"><span>✦</span>写作中心</a>
-      <a class="{{ 'active' if path.startswith('/settings') or path.startswith('/profiles') else '' }}" href="/settings"><span>⚙</span>设置</a>
+      <a class="{{ 'active' if path.startswith('/library') or path.startswith('/papers') or path.startswith('/annual') or path.startswith('/archive') else '' }}" href="/library"><span>▦</span>文献库</a>
+      <a class="{{ 'active' if path.startswith('/reading') else '' }}" href="/reading"><span>◉</span>精读笔记</a>
+      <a class="{{ 'active' if path.startswith('/ideas') else '' }}" href="/ideas"><span>✎</span>灵感</a>
+      <a class="{{ 'active' if path.startswith('/progress') or path.startswith('/writing') or path.startswith('/generate') or path.startswith('/weekly') or path.startswith('/citations') or path.startswith('/roadmap') else '' }}" href="/progress"><span>✦</span>进展与写作</a>
     </nav>
     <div class="profile-chip">
       <span>当前研究方向</span>
       <strong>{{ current_profile.display_name if current_profile is defined and current_profile else current_profile_id if current_profile_id is defined else "未选择" }}</strong>
       <a href="/settings#profiles">切换方向</a>
     </div>
+    <nav class="side-nav side-nav-secondary">
+      <a class="{{ 'active' if path.startswith('/settings') or path.startswith('/profiles') else '' }}" href="/settings"><span>⚙</span>设置</a>
+    </nav>
   </aside>
   <div class="app-frame">
     <header class="topbar">

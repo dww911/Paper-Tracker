@@ -2,7 +2,11 @@
 {% block title %}{{ idea.title or '灵感' }}{% endblock %}
 {% block content %}
 <section class="page-head">
-  <h1>{{ '新建灵感' if is_new else idea.title }}</h1>
+  <div>
+    <p class="eyebrow">Idea Note</p>
+    <h1>{{ '新建灵感' if is_new else idea.title }}</h1>
+    <p class="subtitle">记录来源论文、可跟进方向和下一步实验/写作动作。</p>
+  </div>
 </section>
 {% if request.query_params.get('error') == 'save_failed' %}
 <p class="notice">保存失败，请重试。{{ request.query_params.get('detail', '') }}</p>
@@ -17,7 +21,7 @@
   </label>
   <label>状态
     <select name="status">
-      {% for s in ['想法中','验证中','可写小论文','可写综述','已归档'] %}
+      {% for s in ['想法中','准备实验','准备写作','已归档'] %}
       <option value="{{ s }}" {% if idea.status == s %}selected{% endif %}>{{ s }}</option>
       {% endfor %}
     </select>

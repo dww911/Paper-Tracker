@@ -1,11 +1,16 @@
 {% extends "base.html" %}
-{% block title %}阅读队列{% endblock %}
+{% block title %}精读笔记{% endblock %}
 {% block content %}
 <section class="page-head">
   <div>
     <p class="eyebrow">Reading Queue</p>
-    <h1>阅读队列</h1>
-    <p class="subtitle">把“发现论文”推进到待读、精读、已读、收藏和笔记。</p>
+    <h1>精读笔记</h1>
+    <p class="subtitle">把“发现论文”推进到待读、PDF 精读、Markdown 笔记、已读和收藏。</p>
+  </div>
+  <div class="hero-actions">
+    <a class="button" href="/papers?status=todo">待读论文</a>
+    <a class="button ghost" href="/papers?status=reading">精读中</a>
+    <a class="button ghost" href="/papers">回到文献库</a>
   </div>
 </section>
 
@@ -20,7 +25,8 @@
       <p class="meta">{{ paper.journal or "未知期刊" }} ｜ {{ paper.final_score or 0 }}/30</p>
       <div class="card-actions">
         <a href="/papers/{{ paper.stable_id }}">详情</a>
-        <a href="/papers/{{ paper.stable_id }}/export">生成笔记</a>
+        <a href="/papers/{{ paper.stable_id }}#my-notes">写笔记</a>
+        <a href="/ideas/new?from_paper={{ paper.stable_id }}">形成灵感</a>
       </div>
     </article>
     {% endfor %}

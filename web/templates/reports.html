@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}报告导出{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>报告导出</h1>
+    <p class="subtitle">把文献库整理成 Markdown 日报、Excel 文献库和年度文献报告。</p>
+  </div>
+</section>
+
+<section class="hub-grid">
+  <article class="hub-card">
+    <h2>
+      <span class="title-icon ic-blue">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </span>
+      Markdown 日报
+    </h2>
+    <p>生成今日新增、推荐论文、摘要补全情况和阅读建议。</p>
+    <a class="dash-btn dash-btn-primary" href="/generate/daily-report">生成日报</a>
+  </article>
+  <article class="hub-card">
+    <h2>
+      <span class="title-icon ic-green">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </span>
+      Excel 文献库
+    </h2>
+    <p>导出当前方向文献，或按年份、星级和关键词筛选后导出。</p>
+    <a class="dash-btn dash-btn-primary" href="/archive/export-excel">导出 Excel</a>
+  </article>
+  <article class="hub-card">
+    <h2>
+      <span class="title-icon ic-purple">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </span>
+      年度文献报告
+    </h2>
+    <p>按年份整理论文、星级、期刊、摘要和代表性文献。</p>
+    <a class="dash-btn dash-btn-primary" href="/annual/{{ years[0] if years else current_year }}">查看年度报告</a>
+  </article>
+</section>
+
+<section class="dash-card dash-reports">
+  <h2 class="dash-section-title">
+    <span class="title-icon ic-purple">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    </span>
+    最近生成的报告
+  </h2>
+  {% if recent_reports %}
+  <ul class="dash-report-list">
+    {% for report in recent_reports %}
+    <li class="dash-report-item">
+      <span class="dash-report-icon {% if report.ext == '.xlsx' %}is-excel{% else %}is-md{% endif %}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </span>
+      <div class="dash-report-info">
+        {% if report.download_href %}
+        <a href="{{ report.download_href }}"><strong>{{ report.name }}</strong></a>
+        {% else %}
+        <strong>{{ report.name }}</strong>
+        {% endif %}
+        <span>{{ report.mtime_display }} · {{ report.type }}</span>
+      </div>
+      <a class="dash-report-more" href="{{ report.download_href or '/reports' }}" title="{% if report.download_href %}下载{% else %}更多{% endif %}">{% if report.download_href %}↓{% else %}⋮{% endif %}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="dash-empty-hint">暂无导出文件。生成日报或导出 Excel 后会显示在这里。</p>
+  {% endif %}
+</section>
+{% endblock %}

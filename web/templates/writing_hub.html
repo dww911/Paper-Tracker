@@ -34,6 +34,15 @@
     <h2>引用生成器</h2>
     <p>引用篮：GB/T 7714、APA、IEEE、BibTeX 等。</p>
   </a>
+  <article class="hub-card">
+    <h2>基于 RAG 生成综述</h2>
+    <p>从文献库、笔记和报告检索证据，生成带来源的综述资料包。</p>
+    <form method="post" action="/generate/review/from-rag">
+      <input type="hidden" name="profile" value="{{ current_profile_id }}">
+      <input name="question" value="{{ current_profile.display_name or current_profile.name or current_profile_id }} 研究进展综述">
+      <button type="submit">生成</button>
+    </form>
+  </article>
   <a class="hub-card" href="/archive">
     <h2>数据归档</h2>
     <p>Excel / Markdown 导出与路径说明。</p>

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}进展与写作{% endblock %}
+{% block title %}研究进展{% endblock %}
 {% block content %}
 <section class="page-head">
   <div>
     <p class="eyebrow">Research Progress</p>
-    <h1>进展与写作</h1>
+    <h1>研究进展</h1>
     <p class="subtitle">{{ profile_obj.display_name or profile_obj.name or selected_profile }}：把文献积累、精读笔记、灵感和引用整理成可写作输出。</p>
   </div>
   <form method="get" class="inline-form" action="/progress">
@@ -50,6 +50,7 @@
     <input type="hidden" name="profile" value="{{ selected_profile }}">
     <button type="submit" class="secondary">综述准备度分析</button>
   </form>
+  <a class="button ghost" href="/roadmap?profile={{ selected_profile }}">研究方向地图</a>
 </section>
 
 <section class="hub-grid compact-hub">
@@ -68,6 +69,10 @@
   <a class="hub-card" href="/citations">
     <h2>引用生成</h2>
     <p>导出 GB/T 7714、APA、IEEE、BibTeX、Markdown。</p>
+  </a>
+  <a class="hub-card" href="/roadmap?profile={{ selected_profile }}">
+    <h2>研究方向地图</h2>
+    <p>时间轴、脉络树和精读路线，显示每个阶段的已读进度。</p>
   </a>
 </section>
 
@@ -207,7 +212,7 @@
   <a href="/progress/{{ selected_profile }}">当前方向进度</a> ·
   <a href="/progress/{{ selected_profile }}#keywords">关键词覆盖</a> ·
   <a href="/progress/{{ selected_profile }}#milestones">里程碑</a> ·
-  <a href="/roadmap">精读路线</a> ·
+  <a href="/roadmap?profile={{ selected_profile }}">研究方向地图</a> ·
   <a href="/writing/review">综述准备</a> ·
   <a href="/citations">引用生成</a> ·
   <a href="/archive">长期归档</a>

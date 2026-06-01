@@ -1,43 +1,196 @@
 {% extends "base.html" %}
 {% block title %}运行结果 #{{ run.id }}{% endblock %}
 {% block content %}
-<section class="page-head">
-  <div>
-    <p class="eyebrow">Run Result</p>
-    <h1>运行结果 #{{ run.id }}</h1>
-    <p class="subtitle">{{ run.run_time }} · {{ run.mode }} · {{ run.profile }}</p>
-  </div>
-</section>
+<div class="page-stack">
+  <section class="page-head">
+    <div>
+      <h1>本次获取完成</h1>
+      <p class="subtitle">{{ run.run_time }} · {{ run.mode }} · {{ run_profile_name }}（<code>{{ run.profile }}</code>）</p>
+    </div>
+  </section>
 
-<section class="stat-grid">
-  <article class="stat-card"><span>检索</span><strong>{{ run.total_found or 0 }}</strong></article>
-  <article class="stat-card"><span>高相关</span><strong>{{ run.kept_after_relevance or 0 }}</strong></article>
-  <article class="stat-card"><span>入库</span><strong>{{ run.ingested_count or run.new_papers or 0 }}</strong></article>
-  <article class="stat-card"><span>更新</span><strong>{{ run.updated_count or 0 }}</strong></article>
-  <article class="stat-card"><span>低分跳过</span><strong>{{ run.skipped_low_score or 0 }}</strong></article>
-  <article class="stat-card"><span>新解析</span><strong>{{ run.new_papers or 0 }}</strong></article>
-</section>
+  {% if newer_run %}
+  <section class="dash-notice warn-text">
+    <strong>这不是最新一次运行。</strong>你正在查看的是历史记录 #{{ run.id }}。
+    最新运行：<a href="/runs/{{ newer_run.id }}">#{{ newer_run.id }} · {{ newer_run.run_time }} · {{ newer_run.mode }} · 入库 {{ newer_run.ingested_count or newer_run.new_papers or 0 }} 篇</a>。
+    文献请打开 <a href="/papers">文献库</a>。
+  </section>
+  {% elif stale_empty_run %}
+  <section class="dash-notice warn-text">
+    <strong>这是一次空的 daily 快照（检索 0 / 入库 0），不是年度补全结果。</strong>
+    若你刚跑过年份区间任务，请勿把本页当作「本次」结果；请到 <a href="/fetch">获取文献</a> 选「年份区间」并确认写入数据库，或查看
+    <code>.agents/skills/Ptychography_论文全量库.xlsx</code>。
+  </section>
+  {% endif %}
 
-<section class="content-band">
-  <h2>星级分布</h2>
-  <div class="stat-grid compact">
-    <article class="stat-card"><span>★★★★★</span><strong>{{ run.star5 or 0 }}</strong></article>
-    <article class="stat-card"><span>★★★★</span><strong>{{ run.star4 or 0 }}</strong></article>
-    <article class="stat-card"><span>★★★</span><strong>{{ run.star3 or 0 }}</strong></article>
-    <article class="stat-card"><span>★★</span><strong>{{ run.star2 or 0 }}</strong></article>
-    <article class="stat-card"><span>★</span><strong>{{ run.star1 or 0 }}</strong></article>
-  </div>
-</section>
+  <article class="dash-card content-band">
+    <h2 class="dash-section-title dash-section-title-standalone">运行配置</h2>
+    <dl class="meta-dl">
+      <dt>当前方向</dt><dd>{{ run_profile_name }} <code>{{ run.profile }}</code></dd>
+      <dt>时间范围</dt><dd>{% if run.mode == 'annual_summary' and run.run_year %}年份区间 · {{ run.run_year }}{% elif run.mode == 'daily' %}最近最新{% else %}{{ run.mode }}{% if run.run_year %} · {{ run.run_year }}{% endif %}{% endif %}</dd>
+      <dt>数据源</dt><dd>{{ run.data_sources or "未记录（历史运行）" }}</dd>
+      <dt>最大检索数</dt><dd>{% if filter_stats.max_papers_per_year %}每年 {{ filter_stats.max_papers_per_year }} 篇{% elif run.max_results %}{{ run.max_results }}{% if run.mode == 'annual_summary' %} / 年{% endif %}{% else %}未记录（历史运行）{% endif %}</dd>
+      <dt>入库策略</dt><dd>{% if run.ingest_policy == 'all' %}全部入库{% elif run.ingest_policy == 'relevance' %}按研究方向筛选{% elif run.ingest_policy %}{{ run.ingest_policy }}{% else %}未记录（历史运行）{% endif %}</dd>
+      {% if run.google_query %}<dt>查询词</dt><dd><code>{{ run.google_query }}</code></dd>{% endif %}
+    </dl>
+  </article>
 
-<section class="content-band">
-  <h2>下一步</h2>
-  <div class="hero-actions">
-    <a class="button" href="/papers?profile={{ run.profile }}">查看全部结果</a>
-    <a class="button ghost" href="/generate/daily-report">生成日报</a>
-    <a class="button ghost" href="/archive/export-excel">导出 Excel</a>
-    <a class="button ghost" href="/wechat/push-today">推送微信</a>
-    <a class="button ghost" href="/writing/review">生成综述</a>
-    <a class="button ghost" href="/fetch">再次获取</a>
-  </div>
-</section>
+  <article class="dash-card dash-today-panel">
+    <h2 class="dash-section-title dash-section-title-standalone">
+      <span class="title-icon ic-blue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      </span>
+      运行统计
+    </h2>
+    <div class="dash-today-grid run-stats-grid">
+      <div class="dash-mini-card">
+        <span class="dash-mini-icon ic-blue">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        </span>
+        <div><span class="dash-mini-label">检索到</span><strong class="dash-mini-value">{{ run.total_found or 0 }}<small>篇</small></strong></div>
+      </div>
+      <div class="dash-mini-card">
+        <span class="dash-mini-icon ic-green">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <div><span class="dash-mini-label">新增入库</span><strong class="dash-mini-value">{{ run.ingested_count or run.new_papers or 0 }}<small>篇</small></strong></div>
+      </div>
+      <div class="dash-mini-card">
+        <span class="dash-mini-icon ic-amber">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
+        </span>
+        <div><span class="dash-mini-label">重复跳过</span><strong class="dash-mini-value">{{ run.skipped_duplicate or 0 }}<small>篇</small></strong></div>
+      </div>
+      <div class="dash-mini-card">
+        <span class="dash-mini-icon ic-purple">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </span>
+        <div><span class="dash-mini-label">摘要补全</span><strong class="dash-mini-value">{{ run.abstract_completed or 0 }}<small>篇</small></strong></div>
+      </div>
+      <div class="dash-mini-card">
+        <span class="dash-mini-icon ic-teal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>
+        </span>
+        <div><span class="dash-mini-label">IF 匹配</span><strong class="dash-mini-value">{{ run.if_matched or 0 }}<small>篇</small></strong></div>
+      </div>
+      <div class="dash-mini-card">
+        <span class="dash-mini-icon ic-red">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </span>
+        <div><span class="dash-mini-label">无关过滤</span><strong class="dash-mini-value">{{ run.skipped_irrelevant or run.skipped_low_score or 0 }}<small>篇</small></strong></div>
+      </div>
+      <div class="dash-mini-card">
+        <div><span class="dash-mini-label">DOI 补全</span><strong class="dash-mini-value">{{ run.doi_completed or 0 }}<small>篇</small></strong></div>
+      </div>
+    </div>
+    {% if filter_stats %}
+    <div class="content-band" style="margin-top:1rem;">
+      {% if filter_stats.yearly_breakdown %}
+      <h3 class="dash-section-title dash-section-title-standalone">分年检索统计</h3>
+      <div class="table-wrap">
+        <table class="run-candidate-table">
+          <thead><tr><th>年份</th><th>检索到</th><th>通过筛选</th></tr></thead>
+          <tbody>
+            {% for y, row in filter_stats.yearly_breakdown|dictsort %}
+            <tr><td>{{ y }}</td><td>{{ row.retrieved or 0 }}</td><td>{{ row.kept or 0 }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if filter_stats.max_papers_per_year %}
+      <p class="field-hint">每年上限 {{ filter_stats.max_papers_per_year }} 篇 · 区间 {{ filter_stats.year_span or run.run_year }} · 检索合计 {{ run.total_found or 0 }} 篇</p>
+      {% endif %}
+      {% endif %}
+      <h3 class="dash-section-title dash-section-title-standalone">过滤原因统计</h3>
+      <ul class="meta">
+        {% if filter_stats.excluded_by_keywords %}<li>命中排除词：{{ filter_stats.excluded_by_keywords }} 篇</li>{% endif %}
+        {% if filter_stats.excluded_by_must_have %}<li>未命中必须关键词：{{ filter_stats.excluded_by_must_have }} 篇</li>{% endif %}
+        {% if filter_stats.excluded_by_score %}<li>相关性分数过低：{{ filter_stats.excluded_by_score }} 篇</li>{% endif %}
+        {% for reason, count in (filter_stats.filtered_reasons or {})|dictsort(by='value', reverse=true) %}
+        {% if loop.index <= 8 %}<li>{{ reason }}：{{ count }} 篇</li>{% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </article>
+
+  <article class="dash-card dash-today-panel">
+    <h2 class="dash-section-title dash-section-title-standalone">
+      <span class="title-icon ic-gold">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </span>
+      星级分布
+    </h2>
+    <div class="dash-today-grid run-star-grid">
+      <div class="dash-mini-card"><div><span class="dash-mini-label">★★★★★</span><strong class="dash-mini-value">{{ run.star5 or 0 }}</strong></div></div>
+      <div class="dash-mini-card"><div><span class="dash-mini-label">★★★★</span><strong class="dash-mini-value">{{ run.star4 or 0 }}</strong></div></div>
+      <div class="dash-mini-card"><div><span class="dash-mini-label">★★★</span><strong class="dash-mini-value">{{ run.star3 or 0 }}</strong></div></div>
+      <div class="dash-mini-card"><div><span class="dash-mini-label">★★</span><strong class="dash-mini-value">{{ run.star2 or 0 }}</strong></div></div>
+      <div class="dash-mini-card"><div><span class="dash-mini-label">★</span><strong class="dash-mini-value">{{ run.star1 or 0 }}</strong></div></div>
+    </div>
+  </article>
+
+  <article class="dash-card dash-today-panel">
+    <h2 class="dash-section-title dash-section-title-standalone">
+      <span class="title-icon ic-blue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      </span>
+      检索结果列表
+    </h2>
+    {% if run.skipped_low_score and (run.ingested_count or run.new_papers or 0) == 0 %}
+    <p class="dash-empty-hint">共检索到 {{ run.total_found or 0 }} 篇，但均未通过相关性筛选，因此未写入文献库。可在下方查看每篇的评分与过滤原因，或到<a href="/profiles?selected={{ run.profile }}">研究方向设置</a>调低「最低相关性分」。</p>
+    {% endif %}
+    {% if run_candidates %}
+    <div class="table-wrap">
+      <table class="run-candidate-table">
+        <thead>
+          <tr>
+            <th>标题</th>
+            <th>年份</th>
+            <th>相关性分</th>
+            <th>状态</th>
+            <th>说明</th>
+            <th>原文</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in run_candidates %}
+          <tr>
+            <td class="title-cell">{{ item.title }}</td>
+            <td>{{ item.year or "—" }}</td>
+            <td>{{ item.relevance_score if item.relevance_score is not none else "—" }}</td>
+            <td>
+              {% if item.status == 'ingested' %}<span class="run-status run-status-ingested">已入库</span>
+              {% elif item.status == 'full_tier' %}<span class="run-status run-status-full">高相关</span>
+              {% elif item.status == 'low_tier' %}<span class="run-status run-status-low">低优先级</span>
+              {% else %}<span class="run-status run-status-filtered">已过滤</span>{% endif %}
+            </td>
+            <td class="muted">{{ item.filter_reason or "—" }}</td>
+            <td class="link-cell">{% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener">打开</a>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="dash-empty-hint">本次运行未保存检索列表（升级前的历史记录）。请<a href="/fetch">重新获取一次</a>，即可在此查看全部检索结果。</p>
+    {% endif %}
+  </article>
+
+  <section class="dash-card content-band">
+    <h2 class="dash-section-title dash-section-title-standalone">
+      <span class="title-icon ic-green">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </span>
+      下一步
+    </h2>
+    <div class="hero-actions" style="justify-content:flex-start;">
+      <a class="dash-btn dash-btn-primary" href="/papers?profile={{ run.profile }}">查看本次结果</a>
+      <a class="dash-btn dash-btn-outline" href="/papers">进入文献库</a>
+      <a class="dash-btn dash-btn-outline" href="/generate/daily-report">生成 Markdown 报告</a>
+      <a class="dash-btn dash-btn-outline" href="/archive/export-excel">导出 Excel</a>
+      <a class="dash-btn dash-btn-outline" href="/fetch">再次获取</a>
+    </div>
+  </section>
+</div>
 {% endblock %}

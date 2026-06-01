@@ -1,155 +1,268 @@
 {% extends "base.html" %}
-{% block title %}获取更多文献{% endblock %}
+{% block title %}获取文献{% endblock %}
 {% block content %}
 <section class="page-head">
   <div>
-    <p class="eyebrow">Fetch Papers</p>
-    <h1>获取更多文献</h1>
-    <p class="subtitle">默认 daily（arXiv）；相关论文全部入库。若结果偏少，请在设置 → 研究方向放宽 must_have / ingest_min_score，或把检索范围改为 30 天、50 篇。</p>
+    <h1>获取文献</h1>
+    <p class="subtitle">按当前研究方向检索论文，自动补全摘要、DOI、期刊、引用数、IF 和分区，并写入个人文献库。</p>
   </div>
-  <a class="button ghost" href="/runs/latest">查看最近一次运行</a>
+  {% if latest %}
+  <div class="hero-actions">
+    <a class="dash-btn dash-btn-outline" href="/runs/{{ latest.id }}">查看本方向最近一次运行</a>
+  </div>
+  {% endif %}
 </section>
+
+{% if request.query_params.get('no_runs') == '1' %}
+<p class="notice">当前默认方向还没有运行记录。切换方向后需重新<a href="/fetch">获取文献</a>，历史运行页仍可能显示旧方向的快照。</p>
+{% endif %}
+{% if request.query_params.get('run_finished_no_db') == '1' %}
+<p class="notice warn-text">后台任务已在日志中结束，但数据库里没有新的运行记录（常见原因：文献入库 SQL 失败或「写入数据库」未开启）。请勿把旧的 21:49 daily 当作本次结果。年度补全的论文可能在 <code>.agents/skills/Ptychography_论文全量库.xlsx</code>；入库成功后才会出现在 <a href="/papers">文献库</a>。请选「年份区间」并确认写入数据库后重新获取。</p>
+{% endif %}
+{% if prefill_from == 'idea-lab' and prefill_keywords %}
+<section class="dash-notice success-text">来自想法打磨室的补充检索任务。可在下方编辑关键词后提交获取。</section>
+{% endif %}
 
 <section class="two-col-flow">
   <form class="flow-panel" method="post" action="/run" id="fetch-form">
-    <h2>运行配置</h2>
-    <label>研究方向
-      <select name="profile">
-        {% for item in profiles %}
-        <option value="{{ item.profile_id }}" {% if item.profile_id == current_profile_id %}selected{% endif %}>{{ item.display_name or item.name or item.profile_id }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>运行模式
-      <select name="mode" id="fetch-mode">
-        <option value="daily" selected>daily：arXiv（推荐）</option>
-        <option value="high_quality">high_quality：补摘要、IF</option>
-        <option value="google_scholar">google_scholar</option>
-        <option value="annual_summary">annual_summary：按年度</option>
-      </select>
-    </label>
+    <h2>1. 研究方向</h2>
+    <p class="field-hint">当前方向：<strong>{{ current_profile.display_name or current_profile.name or current_profile_id }}</strong>。在 <a href="/profiles">设置</a> 中点击左侧列表可切换方向，全站数据会随之更换。</p>
+    {% if not current_profile.include_keywords and not current_profile.google_scholar_query %}
+    <p class="notice">当前方向还没有配置关键词。系统会临时使用方向名称检索，但为了避免跑偏，建议先到「管理研究方向」补充 3-8 个核心关键词。</p>
+    {% endif %}
+    <input type="hidden" name="profile" value="{{ current_profile_id }}">
+    <p class="field-hint"><a href="/profiles?selected={{ current_profile_id }}">管理研究方向</a></p>
 
-    <div id="panel-daily" class="fetch-range-panel">
-      <label>时间范围（最近 N 天）
-        <select name="time_range_days">
-          <option value="1">1 天</option>
-          <option value="7" selected>7 天</option>
-          <option value="30">30 天</option>
+    <h2>2. 时间范围</h2>
+    <fieldset class="time-scope-group" id="time-scope-fieldset">
+      <div class="radio-row">
+        <label class="radio-chip"><input type="radio" name="time_scope" value="latest" checked> 最近最新</label>
+        <label class="radio-chip"><input type="radio" name="time_scope" value="range"> 年份区间</label>
+      </div>
+    </fieldset>
+
+    <div id="panel-latest" class="fetch-range-panel">
+      <label>时间范围
+        <select name="latest_preset">
+          <option value="pure" selected>今日最新（最新 N 篇）</option>
+          <option value="7">最近 7 天</option>
+          <option value="30">最近 30 天</option>
+          <option value="90">最近 90 天</option>
         </select>
       </label>
+      <p class="field-hint">追新预印本：arXiv + Semantic Scholar</p>
     </div>
 
-    <div id="panel-annual" class="fetch-range-panel" hidden>
-      <p class="field-hint">年度模式只按年份检索，不使用「最近 N 天」。</p>
-      <label>单年
-        <input name="year" id="input-year" type="number" min="2000" max="2100" placeholder="例如 2026">
-      </label>
-      <p class="field-hint">或填写起止年（与单年二选一）</p>
-      <label>起止年
-        <input name="start_year" id="input-start-year" type="number" min="2000" max="2100" placeholder="2024" style="width:45%">
-        —
-        <input name="end_year" id="input-end-year" type="number" min="2000" max="2100" placeholder="2026" style="width:45%">
-      </label>
+    <div id="panel-range" class="fetch-range-panel" hidden>
+      <p class="field-hint">按年份区间批量检索，适合补全「2024 年之后」等历史文献。</p>
+      <div class="fetch-presets">
+        <button type="button" class="preset-chip" data-start="{{ current_year }}" data-end="{{ current_year }}">仅 {{ current_year }} 年</button>
+        <button type="button" class="preset-chip" data-start="2024" data-end="{{ current_year }}">2024 至今</button>
+        <button type="button" class="preset-chip" data-start="2020" data-end="{{ current_year }}">2020 至今</button>
+        <button type="button" class="preset-chip" data-start="2015" data-end="{{ current_year }}">2015 至今</button>
+      </div>
+      <div class="fetch-range-row">
+        <label>起始年份
+          <select name="start_year" id="fetch-start-year">
+            {% for y in year_range_years %}
+            <option value="{{ y }}" {% if y == 2024 %}selected{% endif %}>{{ y }} 年</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>结束年份
+          <select name="end_year" id="fetch-end-year">
+            {% for y in year_range_years %}
+            <option value="{{ y }}" {% if y == current_year %}selected{% endif %}>{{ y }} 年{% if y == current_year %}（至今）{% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <p class="field-hint" id="range-summary">将检索 <strong>2024 — {{ current_year }}</strong> 年文献</p>
+      <p class="field-hint">OpenAlex 为主力数据源；有 SerpApi Key 时优先 Scholar；Semantic Scholar 限流时自动跳过 · 每年最多抓取下方数量</p>
     </div>
 
-    <p id="panel-scholar-hint" class="field-hint" hidden>该模式按「最大检索数」抓取，无需选择天数或年份。</p>
+    <p id="panel-scholar-hint" class="field-hint" hidden>高级模式按「最大检索数」抓取，不使用时间范围。</p>
 
-    <label>最大检索数
-      <select name="max_results">
+    <label id="max-results-label">最大检索数
+      <select name="max_results" id="max-results-select">
         <option value="30">30</option>
-        <option value="50">50</option>
+        <option value="50" selected>50</option>
         <option value="100">100</option>
         <option value="200">200</option>
       </select>
-      <span class="field-hint" id="max-results-hint">daily / 谷歌学术：单次检索上限</span>
     </label>
+    <p class="field-hint" id="max-results-hint" hidden>年份区间模式下，此数量为<strong>每年</strong>的上限。</p>
 
-    <h3>输出选项</h3>
+    <h2>3. 入库策略</h2>
+    <fieldset class="time-scope-group">
+      <div class="radio-row">
+        <label class="radio-chip"><input type="radio" name="ingest_policy" value="relevance" checked> 按研究方向筛选（推荐）</label>
+        <label class="radio-chip"><input type="radio" name="ingest_policy" value="all"> 全部入库（不筛选）</label>
+      </div>
+    </fieldset>
+    <p class="field-hint">默认按研究方向筛选：仅入库命中关键词且相关性达标的论文；选「全部入库」则仅去重不过滤。</p>
+
+    <h2>补充检索词{% if prefill_branch_title %} <span class="meta">（分支：{{ prefill_branch_title }}）</span>{% endif %}</h2>
+    <label>额外关键词（逗号或换行分隔，将合并进本次检索）
+      <textarea name="extra_keywords" rows="3" placeholder="例如：WDD initialization, low-dose ptychography">{{ prefill_keywords or '' }}</textarea>
+    </label>
+    <p class="field-hint">来自想法打磨室的任务会自动预填；不会修改研究方向永久配置。</p>
+
+    <details class="advanced-options">
+      <summary>自定义关键词 / 高级模式</summary>
+      <label>运行模式
+        <select name="mode" id="fetch-mode">
+          <option value="daily" selected>daily（跟随时间范围）</option>
+          <option value="high_quality">high_quality（Google Scholar + 多源补全）</option>
+          <option value="google_scholar">google_scholar（自定义 Scholar 检索）</option>
+        </select>
+      </label>
+    </details>
+
+    <h2>4. 数据源</h2>
+    <p class="field-hint">数据源随上方「时间范围 / 运行模式」自动切换，此处为说明，无需手动勾选。</p>
+    <ul class="source-hints feature-checklist" id="source-hints-list">
+      <li><span class="feature-tag on" data-source="arxiv">arXiv</span> 追最新预印本（「最近最新」模式）</li>
+      <li><span class="feature-tag on" data-source="openalex">OpenAlex</span> 补引用与元数据（年份区间）</li>
+      <li><span class="feature-tag on" data-source="crossref">Crossref</span> 补 DOI / ISSN / 期刊</li>
+      <li><span class="feature-tag on" data-source="s2">Semantic Scholar</span> 补摘要与引用（限流时自动跳过）</li>
+      <li><span class="feature-tag" data-source="scholar">Google Scholar</span> 正式文献（需 SerpApi Key，年份区间优先）</li>
+    </ul>
+
+    <h2>5. 自动补全</h2>
     <div class="option-list">
-      <label><input type="checkbox" name="write_db" value="on" checked> 写入 SQLite</label>
-      <label><input type="checkbox" name="write_excel" value="on" checked> 追加 Excel</label>
-      <label><input type="checkbox" name="write_markdown" value="on" checked> 生成 Markdown 日报</label>
-      <label><input type="checkbox" name="notify_wechat" value="on"> 完成后推送微信</label>
+      <label><input type="checkbox" name="enrich_metadata" value="on" checked> 补全摘要 / DOI / 期刊 / 引用数</label>
+      <label><input type="checkbox" name="journal_rank" value="on" checked> 匹配 IF / JCR / 中科院分区（需 journal_metrics.csv）</label>
+      <label><input type="checkbox" name="auto_rating" value="on" checked> 自动星级评价</label>
     </div>
-    <button type="submit" id="fetch-submit">开始获取</button>
+    <p class="field-hint">取消「匹配 IF」可加快大批量入库；取消「补全元数据」则仅保留检索时的原始字段。</p>
+
+    <h2>6. 输出选项</h2>
+    <div class="option-list">
+      <label><input type="checkbox" name="write_db" value="on" checked> 写入 SQLite 文献库</label>
+      <label><input type="checkbox" name="write_excel" value="on" checked> 同步导出 Excel</label>
+      <label><input type="checkbox" name="write_markdown" value="on" checked> 生成 Markdown 报告</label>
+    </div>
+    <div class="hero-actions" style="margin-top:1rem;flex-wrap:wrap;gap:0.75rem;">
+      <button type="submit" class="dash-btn dash-btn-primary fetch-submit-btn" id="fetch-submit" name="action" value="run">开始获取</button>
+      <button type="submit" class="dash-btn dash-btn-outline fetch-submit-btn" name="dry_run" value="on" formaction="/run">试跑预览</button>
+    </div>
   </form>
   <section class="flow-panel">
-    <h2>分层入库说明</h2>
-    <p>高相关：命中 must_have_any 且达到 min_score。</p>
-    <p>低优先级：仅达到 ingest_min_score（在设置 → 研究方向中可调）。</p>
-    <p>运行完成后跳转结果页，可继续生成日报 / 导出 / 推送。</p>
+    <h2>运行说明</h2>
+    <p><strong>最近最新</strong> → 追今日/近 N 天预印本（arXiv + Semantic Scholar）。</p>
+    <p><strong>年份区间</strong> → 如「2024 至今」，按年逐批检索（Scholar + OpenAlex + Crossref），每年最多 N 篇。</p>
+    <p><strong>全部入库</strong> → 检索到的文献全部写入文献库，仅去重。</p>
+    <p><strong>按研究方向筛选</strong> → 仅入库与当前方向关键词/相关性分匹配的论文。</p>
+    <p>运行完成后会显示检索数、入库数、重复数、过滤数和星级分布。</p>
   </section>
 </section>
 <script>
 (function () {
   const form = document.getElementById('fetch-form');
   const modeEl = document.getElementById('fetch-mode');
-  const panelDaily = document.getElementById('panel-daily');
-  const panelAnnual = document.getElementById('panel-annual');
+  const timeScopeFieldset = document.getElementById('time-scope-fieldset');
+  const panelLatest = document.getElementById('panel-latest');
+  const panelRange = document.getElementById('panel-range');
   const panelScholarHint = document.getElementById('panel-scholar-hint');
-  const maxHint = document.getElementById('max-results-hint');
-  const yearInput = document.getElementById('input-year');
-  const startYear = document.getElementById('input-start-year');
-  const endYear = document.getElementById('input-end-year');
+  const startYearEl = document.getElementById('fetch-start-year');
+  const endYearEl = document.getElementById('fetch-end-year');
+  const rangeSummary = document.getElementById('range-summary');
+  const maxResultsHint = document.getElementById('max-results-hint');
+  const maxResultsLabel = document.getElementById('max-results-label');
+  const maxResultsSelect = document.getElementById('max-results-select');
+  const scopeInputs = form ? form.querySelectorAll('input[name="time_scope"]') : [];
 
-  function setDisabled(container, disabled) {
-    if (!container) return;
-    container.querySelectorAll('input, select, textarea').forEach(function (el) {
-      el.disabled = disabled;
-    });
+  function selectedTimeScope() {
+    const checked = form ? form.querySelector('input[name="time_scope"]:checked') : null;
+    return checked ? checked.value : 'latest';
   }
 
-  function syncYearMutex() {
-    if (!yearInput || !startYear || !endYear) return;
-    const hasYear = String(yearInput.value || '').trim() !== '';
-    const hasRange = String(startYear.value || '').trim() !== '' || String(endYear.value || '').trim() !== '';
-    if (hasYear) {
-      startYear.value = '';
-      endYear.value = '';
-      startYear.disabled = true;
-      endYear.disabled = true;
-      yearInput.disabled = false;
-    } else if (hasRange) {
-      yearInput.value = '';
-      yearInput.disabled = true;
-      startYear.disabled = false;
-      endYear.disabled = false;
-    } else {
-      yearInput.disabled = false;
-      startYear.disabled = false;
-      endYear.disabled = false;
+  function updateRangeSummary() {
+    if (!startYearEl || !endYearEl || !rangeSummary) return;
+    let start = parseInt(startYearEl.value, 10);
+    let end = parseInt(endYearEl.value, 10);
+    if (start > end) {
+      const tmp = start;
+      start = end;
+      end = tmp;
     }
+    rangeSummary.innerHTML = start === end
+      ? '将检索 <strong>' + start + '</strong> 年文献'
+      : '将检索 <strong>' + start + ' — ' + end + '</strong> 年文献';
+  }
+
+  function applyPreset(start, end) {
+    if (startYearEl) startYearEl.value = String(start);
+    if (endYearEl) endYearEl.value = String(end);
+    updateRangeSummary();
   }
 
   function syncPanels() {
     const mode = modeEl ? modeEl.value : 'daily';
-    const isDaily = mode === 'daily';
-    const isAnnual = mode === 'annual_summary';
-    const isScholar = mode === 'google_scholar' || mode === 'high_quality';
-
-    if (panelDaily) panelDaily.hidden = !isDaily;
-    if (panelAnnual) panelAnnual.hidden = !isAnnual;
-    if (panelScholarHint) panelScholarHint.hidden = !isScholar;
-
-    setDisabled(panelDaily, !isDaily);
-    setDisabled(panelAnnual, !isAnnual);
-
-    if (isAnnual) syncYearMutex();
-    if (maxHint) {
-      maxHint.textContent = isAnnual
-        ? '年度模式：每年最多检索篇数'
-        : (isScholar ? '单次检索上限' : 'daily：最近 N 天内最多检索篇数');
+    const isAdvanced = mode === 'google_scholar' || mode === 'high_quality';
+    const scope = selectedTimeScope();
+    const isRange = !isAdvanced && scope === 'range';
+    if (timeScopeFieldset) timeScopeFieldset.hidden = isAdvanced;
+    if (panelLatest) panelLatest.hidden = isAdvanced || isRange;
+    if (panelRange) panelRange.hidden = isAdvanced || !isRange;
+    if (panelScholarHint) panelScholarHint.hidden = !isAdvanced;
+    if (maxResultsHint) maxResultsHint.hidden = !isRange;
+    if (maxResultsLabel) {
+      const labelText = isRange ? '每年最多检索数' : '最大检索数';
+      const select = maxResultsLabel.querySelector('select');
+      maxResultsLabel.childNodes[0].nodeValue = labelText + ' ';
+      if (select && !maxResultsLabel.contains(select)) maxResultsLabel.appendChild(select);
     }
+    if (isRange && maxResultsSelect && Number(maxResultsSelect.value || 0) < 100) {
+      maxResultsSelect.value = '100';
+    }
+    const submit = document.getElementById('fetch-submit');
+    if (submit && !submit.disabled) {
+      if (isRange) submit.textContent = '获取该区间文献';
+      else if (isAdvanced) submit.textContent = '开始获取';
+      else submit.textContent = '开始获取';
+    }
+    if (isRange) updateRangeSummary();
+    updateSourceHints(mode, scope);
   }
 
-  if (yearInput) yearInput.addEventListener('input', syncYearMutex);
-  if (startYear) startYear.addEventListener('input', syncYearMutex);
-  if (endYear) endYear.addEventListener('input', syncYearMutex);
-  if (modeEl) modeEl.addEventListener('change', syncPanels);
-  syncPanels();
+  function updateSourceHints(mode, scope) {
+    const list = document.getElementById('source-hints-list');
+    if (!list) return;
+    const isAdvanced = mode === 'google_scholar' || mode === 'high_quality';
+    const active = {
+      arxiv: !isAdvanced && scope === 'latest',
+      openalex: !isAdvanced && scope === 'range',
+      crossref: true,
+      s2: !isAdvanced && scope === 'latest',
+      scholar: isAdvanced || scope === 'range',
+    };
+    list.querySelectorAll('.feature-tag').forEach(function (tag) {
+      const key = tag.dataset.source;
+      tag.classList.toggle('on', !!active[key]);
+    });
+  }
 
+  scopeInputs.forEach(function (el) { el.addEventListener('change', syncPanels); });
+  if (modeEl) modeEl.addEventListener('change', syncPanels);
+  if (startYearEl) startYearEl.addEventListener('change', updateRangeSummary);
+  if (endYearEl) endYearEl.addEventListener('change', updateRangeSummary);
+  document.querySelectorAll('.preset-chip').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      applyPreset(btn.dataset.start, btn.dataset.end);
+      const rangeRadio = form ? form.querySelector('input[name="time_scope"][value="range"]') : null;
+      if (rangeRadio) rangeRadio.checked = true;
+      syncPanels();
+    });
+  });
+  syncPanels();
   form?.addEventListener('submit', function () {
-    syncPanels();
+    const scope = selectedTimeScope();
+    const panelLatestInputs = panelLatest ? panelLatest.querySelectorAll('select, input') : [];
+    const panelRangeInputs = panelRange ? panelRange.querySelectorAll('select, input') : [];
+    panelLatestInputs.forEach(function (el) { el.disabled = scope === 'range'; });
+    panelRangeInputs.forEach(function (el) { el.disabled = scope !== 'range'; });
     const btn = document.getElementById('fetch-submit');
     if (btn) { btn.disabled = true; btn.textContent = '已启动…'; }
   });

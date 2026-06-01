@@ -5,32 +5,73 @@
   <div>
     <p class="eyebrow">Export Excel</p>
     <h1>导出 Excel</h1>
-    <p class="subtitle">从 SQLite 按筛选条件导出；留空则导出全部。</p>
+    <p class="subtitle">导出范围与文献库当前筛选一致；默认仅导出当前研究方向。</p>
   </div>
+</section>
+
+<section class="content-band">
+  <h2>导出范围预览</h2>
+  {% if export_scope_lines %}
+  <ul class="meta">
+    {% for line in export_scope_lines %}<li>{{ line }}</li>{% endfor %}
+    <li><strong>论文数量：{{ export_count }} 篇</strong></li>
+  </ul>
+  {% else %}
+  <p class="meta">将导出当前方向文献库中的论文。</p>
+  {% endif %}
 </section>
 
 <section class="two-col-flow">
   <form class="flow-panel" method="post" action="/archive/export-excel">
     <h2>筛选条件</h2>
     <label>研究方向
-      <input name="profile" placeholder="profile_id，留空=全部" value="{{ filters.profile if filters is defined else '' }}">
+      <select name="profile">
+        <option value="__all__" {% if filters.profile == "__all__" %}selected{% endif %}>全部方向</option>
+        <option value="{{ current_profile_id }}" {% if filters.profile != "__all__" %}selected{% endif %}>当前方向：{{ current_profile.display_name or current_profile.name or current_profile_id }}</option>
+      </select>
     </label>
-    <label>年份 <input name="year" value="{{ filters.year if filters is defined else '' }}"></label>
-    <label>星级 <input name="rating" type="number" min="1" max="5" value="{{ filters.rating if filters is defined else '' }}"></label>
-    <label>阅读状态 <input name="status" placeholder="unread/read" value="{{ filters.status if filters is defined else '' }}"></label>
-    <label>关键词 <input name="q" value="{{ filters.q if filters is defined else '' }}"></label>
-    <button type="submit">导出 Excel</button>
+    <label>年份 <input name="year" value="{{ filters.year or '' }}"></label>
+    <label>星级 <input name="rating" type="number" min="1" max="5" value="{{ filters.rating or '' }}"></label>
+    <label>摘要状态
+      <select name="abstract">
+        <option value="">全部</option>
+        <option value="complete" {% if filters.abstract == 'complete' %}selected{% endif %}>完整</option>
+        <option value="incomplete" {% if filters.abstract == 'incomplete' %}selected{% endif %}>未补全</option>
+      </select>
+    </label>
+    <label>IF 下限 <input name="if_min" type="number" step="0.1" value="{{ filters.if_min or '' }}"></label>
+    <label>IF 上限 <input name="if_max" type="number" step="0.1" value="{{ filters.if_max or '' }}"></label>
+    <label>中科院分区
+      <select name="cas_quartile">
+        <option value="">全部</option>
+        {% for z in ['1区','2区','3区','4区'] %}
+        <option value="{{ z }}" {% if filters.cas_quartile == z %}selected{% endif %}>{{ z }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>JCR 分区
+      <select name="jcr_quartile">
+        <option value="">全部</option>
+        {% for q in ['Q1','Q2','Q3','Q4'] %}
+        <option value="{{ q }}" {% if filters.jcr_quartile == q %}selected{% endif %}>{{ q }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>阅读状态 <input name="status" placeholder="unread/read" value="{{ filters.status or '' }}"></label>
+    <label>关键词 <input name="q" value="{{ filters.q or '' }}"></label>
+    <button type="submit" class="dash-btn dash-btn-primary">导出 Excel</button>
   </form>
   <section class="flow-panel">
-    <h2>归档状态</h2>
+    <h2>导出结果</h2>
     <dl>
-      <dt>论文总数</dt><dd>{{ dashboard_numbers.total }}</dd>
+      <dt>文献库总数（当前方向）</dt><dd>{{ dashboard_numbers.total }}</dd>
       {% if generated_path %}
-      <dt>本次导出</dt><dd>{{ generated_path }}</dd>
-      <dt>导出数量</dt><dd>{{ export_count }} 篇</dd>
+      <dt>文件路径</dt><dd><code>{{ generated_path }}</code></dd>
+      <dt>本次导出</dt><dd>{{ export_count }} 篇</dd>
       {% endif %}
     </dl>
-    <a class="button ghost" href="/archive">返回数据归档</a>
+    <a class="dash-btn dash-btn-outline" href="/reports">返回报告导出</a>
+    <a class="dash-btn dash-btn-outline" href="/papers">返回文献库</a>
   </section>
 </section>
 {% endblock %}

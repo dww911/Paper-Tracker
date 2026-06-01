@@ -12,6 +12,11 @@ try:
 except ImportError:
     requests = None
 
+try:
+    from prompt_templates import render_template
+except ImportError:
+    render_template = None
+
 PARSE_FIELD_LABELS = [
     "摘要中文翻译",
     "研究背景",
@@ -87,7 +92,7 @@ def build_parse_prompt(paper: Dict, profile: Optional[Dict] = None) -> str:
     else:
         author_text = str(authors)
 
-    return f"""你是当前研究方向的资深科研顾问。请基于下列论文信息完成结构化拆解。
+    fallback = f"""你是当前研究方向的资深科研顾问。请基于下列论文信息完成结构化拆解。
 要求：禁止编造；信息不足时明确写“摘要未提供，需阅读原文确认”；语言简洁专业；每字段单独成段。
 {focus_block}
 【论文基础信息】
@@ -111,6 +116,19 @@ def build_parse_prompt(paper: Dict, profile: Optional[Dict] = None) -> str:
 【对我的启发】：
 【是否值得精读】：
 """
+    values = {
+        "profile_name": profile.get("name") or profile.get("display_name") or "科研方向",
+        "profile_focus": focus_lines,
+        "title": paper.get("title", ""),
+        "authors": author_text,
+        "published_time": paper.get("published_time", ""),
+        "link": paper.get("link", ""),
+        "abstract": paper.get("abstract", ""),
+        "relevance_score": paper.get("relevance_score", "未评分"),
+    }
+    if render_template:
+        return render_template("abstract_reading_prompt", values, fallback)
+    return fallback
 
 
 def parse_structured_fields(text: str) -> Dict[str, str]:

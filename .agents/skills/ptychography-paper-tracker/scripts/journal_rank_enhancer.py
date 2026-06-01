@@ -53,8 +53,23 @@ def normalize_journal_name(value: str) -> str:
     return " ".join(tokens).strip()
 
 
+def ensure_journal_metrics_file(path: Optional[str] = None) -> str:
+    """Create journal_metrics.csv from example template when missing."""
+    import shutil
+
+    path = path or metrics_path()
+    if os.path.exists(path):
+        return path
+    example = example_metrics_path()
+    if os.path.exists(example):
+        shutil.copyfile(example, path)
+    return path
+
+
 def load_journal_metrics(path: Optional[str] = None, quiet: bool = False) -> List[Dict]:
     path = path or metrics_path()
+    if not os.path.exists(path):
+        ensure_journal_metrics_file(path)
     if not os.path.exists(path):
         if not quiet:
             print(
@@ -62,6 +77,8 @@ def load_journal_metrics(path: Optional[str] = None, quiet: bool = False) -> Lis
                 f"请在设置中心上传期刊指标表。样例：{example_metrics_path()}"
             )
         return []
+    if not quiet and path == metrics_path():
+        print(f"📊 已加载期刊指标表：{path}")
 
     with open(path, "r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -109,10 +126,40 @@ def _empty_rank() -> Dict:
     }
 
 
+def fetch_journal_from_doi(doi: str) -> Dict[str, str]:
+    """Resolve journal name and ISSN from DOI via Crossref; never raises."""
+    doi = str(doi or "").strip()
+    if not doi:
+        return {}
+    doi = doi.replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+    try:
+        import requests
+    except ImportError:
+        return {}
+    try:
+        response = requests.get(
+            f"https://api.crossref.org/works/{doi}",
+            headers={"User-Agent": "ResearchRadar/1.0 (mailto:research-radar@local)"},
+            timeout=15,
+        )
+        if response.status_code != 200:
+            return {}
+        item = response.json().get("message", {}) or {}
+        issn_list = item.get("ISSN", []) or []
+        return {
+            "journal_name": " ".join(item.get("container-title", [])[:1]),
+            "issn": issn_list[0] if issn_list else "",
+            "eissn": issn_list[1] if len(issn_list) > 1 else "",
+        }
+    except Exception:
+        return {}
+
+
 def match_journal_rank(
     journal_name: str = "",
     issn: str = "",
     eissn: str = "",
+    doi: str = "",
     metrics: Optional[List[Dict]] = None,
 ) -> Dict:
     """Match journal metrics; never raises."""
@@ -123,6 +170,18 @@ def match_journal_rank(
     issn_key = normalize_issn(issn)
     eissn_key = normalize_issn(eissn)
     name_key = normalize_journal_name(journal_name)
+
+    if doi and (not issn_key or not name_key):
+        doi_meta = fetch_journal_from_doi(doi)
+        if doi_meta.get("issn") and not issn_key:
+            issn_key = normalize_issn(doi_meta["issn"])
+            issn = doi_meta["issn"]
+        if doi_meta.get("eissn") and not eissn_key:
+            eissn_key = normalize_issn(doi_meta["eissn"])
+            eissn = doi_meta["eissn"]
+        if doi_meta.get("journal_name") and not name_key:
+            journal_name = doi_meta["journal_name"]
+            name_key = normalize_journal_name(journal_name)
 
     def _build(row: Dict, method: str) -> Dict:
         out = _empty_rank()
@@ -162,7 +221,7 @@ def match_journal_rank(
             return _build(row, "eissn")
     for row in metrics:
         if name_key and name_key == row.get("_name_key"):
-            return _build(row, "exact_name")
+            return _build(row, "exact_name" if not doi else "doi_journal_name")
 
     best = None
     best_ratio = 0.0
@@ -224,6 +283,7 @@ def apply_journal_rank_to_paper(paper: Dict, metrics: Optional[List[Dict]] = Non
         paper.get("journal_name") or paper.get("journal", ""),
         paper.get("issn", ""),
         paper.get("eissn", ""),
+        paper.get("doi", ""),
         metrics,
     )
     paper.update(rank)
@@ -244,9 +304,8 @@ def journal_rank_summary(paper: Dict) -> str:
         return "未匹配"
     parts = []
     impact = paper.get("jcr_impact_factor") or paper.get("impact_factor")
-    if impact not in ("", None, "待补充", "暂无影响因子数据"):
-        year = paper.get("jcr_year") or paper.get("impact_factor_year") or ""
-        parts.append(f"IF {impact}" + (f"（{year}）" if year else ""))
+    if impact not in ("", None, "待补充", "暂无影响因子数据", "谷歌学术不提供"):
+        parts.append(f"IF {impact}")
     if paper.get("jcr_quartile"):
         parts.append(f"JCR {paper['jcr_quartile']}")
     if paper.get("cas_quartile"):
@@ -254,11 +313,31 @@ def journal_rank_summary(paper: Dict) -> str:
     warn = str(paper.get("cas_warning", "")).lower()
     if warn in ("yes", "y", "true", "1", "是", "warning"):
         parts.append("预警")
-    else:
-        parts.append("无预警")
     if paper.get("core_tags"):
         parts.append(str(paper["core_tags"])[:24])
     return "｜".join(parts) if parts else "已匹配"
+
+
+def paper_metrics_line(paper: Dict) -> str:
+    """Compact list-line: IF | JCR | CAS | citations | abstract status."""
+    parts = []
+    rank = journal_rank_summary(paper)
+    if rank and rank != "未匹配":
+        parts.append(rank)
+    elif not paper.get("journal_matched"):
+        parts.append("未匹配")
+    cite = paper.get("citation_count")
+    if cite not in ("", None):
+        parts.append(f"引用 {cite}")
+    if paper.get("abstract_fetch_status") == "complete" or paper.get("abstract_is_complete"):
+        parts.append("摘要完整")
+    elif paper.get("abstract_fetch_status") == "snippet":
+        parts.append("摘要片段")
+    elif paper.get("abstract_fetch_status") == "translated":
+        parts.append("摘要已译")
+    else:
+        parts.append("摘要未补全")
+    return "｜".join(parts)
 
 
 def export_unmatched_journals(papers: List[Dict]) -> List[Dict]:

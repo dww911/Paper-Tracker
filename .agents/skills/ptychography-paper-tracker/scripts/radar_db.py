@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import sqlite3
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional
@@ -8,13 +9,44 @@ from typing import Dict, Iterable, List, Optional
 
 SKILLS_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 ROOT_DIR = os.path.dirname(os.path.dirname(SKILLS_DIR))
-DB_PATH = os.environ.get("RESEARCH_RADAR_DB") or os.path.join(SKILLS_DIR, "research_radar.db")
-FALLBACK_DB_PATH = os.path.join(ROOT_DIR, "research_radar.db")
+LEGACY_DB_PATH = os.path.join(SKILLS_DIR, "research_radar.db")
+ROOT_DB_PATH = os.path.join(ROOT_DIR, "research_radar.db")
+DB_PATH = os.environ.get("RESEARCH_RADAR_DB") or ROOT_DB_PATH
+FALLBACK_DB_PATH = ROOT_DB_PATH
 PROFILES_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "research_profiles.json")
 
 
 def utc_now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _table_count(db_path: str, table: str) -> int:
+    if not os.path.exists(db_path):
+        return 0
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+            return int(row[0] if row else 0)
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return 0
+
+
+def migrate_legacy_db_if_needed(db_path: str = DB_PATH) -> None:
+    if os.environ.get("RESEARCH_RADAR_DB"):
+        return
+    if os.path.abspath(db_path) != os.path.abspath(ROOT_DB_PATH):
+        return
+    if not os.path.exists(LEGACY_DB_PATH):
+        return
+    legacy_count = _table_count(LEGACY_DB_PATH, "papers")
+    target_count = _table_count(db_path, "papers")
+    if legacy_count <= 0 or target_count > 0:
+        return
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    shutil.copy2(LEGACY_DB_PATH, db_path)
 
 
 def update_paper_abstract_zh(stable_id: str, abstract_zh: str, db_path: str = DB_PATH) -> None:
@@ -24,7 +56,12 @@ def update_paper_abstract_zh(stable_id: str, abstract_zh: str, db_path: str = DB
         conn.execute(
             """
             UPDATE papers
-            SET abstract_zh = ?, abstract_is_complete = 1, updated_at = ?
+            SET abstract_zh = ?,
+                abstract_fetch_status = CASE
+                    WHEN abstract_is_complete = 1 THEN COALESCE(NULLIF(abstract_fetch_status, ''), 'complete')
+                    ELSE COALESCE(abstract_fetch_status, 'translated')
+                END,
+                updated_at = ?
             WHERE stable_id = ?
             """,
             (str(abstract_zh).strip(), utc_now(), stable_id),
@@ -37,14 +74,6 @@ def connect(db_path: str = DB_PATH) -> sqlite3.Connection:
         os.makedirs(db_dir, exist_ok=True)
     try:
         conn = sqlite3.connect(db_path)
-        if db_path != FALLBACK_DB_PATH:
-            try:
-                conn.execute("CREATE TABLE IF NOT EXISTS __radar_write_test (id INTEGER)")
-                conn.execute("DROP TABLE IF EXISTS __radar_write_test")
-                conn.commit()
-            except sqlite3.OperationalError:
-                conn.close()
-                raise
     except sqlite3.OperationalError:
         if db_path == FALLBACK_DB_PATH:
             raise
@@ -57,6 +86,7 @@ def connect(db_path: str = DB_PATH) -> sqlite3.Connection:
 
 
 def init_db(db_path: str = DB_PATH) -> None:
+    migrate_legacy_db_if_needed(db_path)
     with connect(db_path) as conn:
         conn.executescript(
             """
@@ -159,6 +189,22 @@ def init_db(db_path: str = DB_PATH) -> None:
             CREATE INDEX IF NOT EXISTS idx_papers_level ON papers(recommendation_level);
             CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year);
             CREATE INDEX IF NOT EXISTS idx_runs_time ON runs(run_time);
+
+            CREATE TABLE IF NOT EXISTS run_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                stable_id TEXT,
+                title TEXT NOT NULL,
+                year INTEGER,
+                journal TEXT,
+                url TEXT,
+                relevance_score INTEGER DEFAULT 0,
+                status TEXT NOT NULL,
+                filter_reason TEXT,
+                sort_order INTEGER DEFAULT 0,
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_run_candidates_run ON run_candidates(run_id);
             """
         )
         ensure_columns(conn, "papers", {
@@ -199,6 +245,12 @@ def init_db(db_path: str = DB_PATH) -> None:
             "core_tags": "TEXT",
             "ccf_rank": "TEXT",
             "journal_quality_score": "INTEGER DEFAULT 0",
+            "abstract_fetch_status": "TEXT",
+            "last_run_id": "INTEGER",
+            "ingest_mode": "TEXT",
+            "query_used": "TEXT",
+            "filter_reason": "TEXT",
+            "is_relevant": "INTEGER DEFAULT 1",
         })
         ensure_columns(conn, "runs", {
             "skipped_low_score": "INTEGER DEFAULT 0",
@@ -210,6 +262,15 @@ def init_db(db_path: str = DB_PATH) -> None:
             "star3": "INTEGER DEFAULT 0",
             "star2": "INTEGER DEFAULT 0",
             "star1": "INTEGER DEFAULT 0",
+            "run_year": "TEXT",
+            "max_results": "INTEGER",
+            "data_sources": "TEXT",
+            "google_query": "TEXT",
+            "ingest_policy": "TEXT",
+            "skipped_irrelevant": "INTEGER DEFAULT 0",
+            "doi_completed": "INTEGER DEFAULT 0",
+            "skipped_cross_profile": "INTEGER DEFAULT 0",
+            "filter_stats_json": "TEXT",
         })
         ensure_columns(conn, "reading_notes", {
             "user_notes": "TEXT",
@@ -259,6 +320,143 @@ def init_db(db_path: str = DB_PATH) -> None:
                 next_suggestion TEXT,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS prompt_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                task_type TEXT NOT NULL,
+                template_path TEXT NOT NULL,
+                description TEXT,
+                version TEXT DEFAULT '1',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS prompt_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_name TEXT,
+                task_type TEXT,
+                source_type TEXT,
+                source_id TEXT,
+                input_summary TEXT,
+                output_summary TEXT,
+                status TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS rag_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_type TEXT NOT NULL,
+                source_id TEXT,
+                title TEXT,
+                profile TEXT,
+                path TEXT,
+                source_url TEXT,
+                content_hash TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(source_type, source_id, path)
+            );
+            CREATE TABLE IF NOT EXISTS rag_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                chunk_text TEXT NOT NULL,
+                section_title TEXT,
+                token_count INTEGER DEFAULT 0,
+                source_url TEXT,
+                paper_id TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (document_id) REFERENCES rag_documents(id)
+            );
+            CREATE TABLE IF NOT EXISTS rag_queries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question TEXT NOT NULL,
+                scope TEXT,
+                profile TEXT,
+                source_id TEXT,
+                answer TEXT,
+                sources_json TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS agent_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL,
+                profile TEXT,
+                user_request TEXT,
+                plan_json TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS agent_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                step_index INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                tool_name TEXT,
+                status TEXT NOT NULL,
+                message TEXT,
+                started_at TEXT,
+                finished_at TEXT,
+                FOREIGN KEY (run_id) REFERENCES agent_runs(id)
+            );
+            CREATE TABLE IF NOT EXISTS agent_outputs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                step_id INTEGER,
+                output_type TEXT,
+                title TEXT,
+                content TEXT,
+                path TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES agent_runs(id),
+                FOREIGN KEY (step_id) REFERENCES agent_steps(id)
+            );
+            CREATE TABLE IF NOT EXISTS roadmap_nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile TEXT NOT NULL,
+                node_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                node_type TEXT NOT NULL,
+                stage_label TEXT,
+                start_year INTEGER,
+                end_year INTEGER,
+                parent_node_key TEXT,
+                importance_level TEXT DEFAULT 'medium',
+                reading_order INTEGER DEFAULT 0,
+                keywords TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(profile, node_key)
+            );
+            CREATE TABLE IF NOT EXISTS roadmap_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile TEXT NOT NULL,
+                from_node_key TEXT NOT NULL,
+                to_node_key TEXT NOT NULL,
+                edge_type TEXT,
+                description TEXT,
+                UNIQUE(profile, from_node_key, to_node_key, edge_type)
+            );
+            CREATE TABLE IF NOT EXISTS roadmap_papers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile TEXT NOT NULL,
+                node_key TEXT NOT NULL,
+                paper_stable_id TEXT NOT NULL,
+                paper_role TEXT DEFAULT 'representative',
+                is_must_read INTEGER DEFAULT 0,
+                reading_rank INTEGER DEFAULT 0,
+                note TEXT,
+                UNIQUE(profile, node_key, paper_stable_id)
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunks_fts USING fts5(
+                chunk_text,
+                title,
+                source_type
+            )
             """
         )
 
@@ -318,13 +516,18 @@ def paper_stable_id(paper: Dict) -> str:
         value = paper.get(key)
         if value:
             return f"{key}:{str(value).lower()}"
-    pid = paper.get("stable_id") or paper.get("id")
+    pid = paper.get("stable_id")
+    if pid:
+        return str(pid)
+    pid = paper.get("id")
     if pid and not str(pid).startswith("scholar_"):
         return str(pid)
     title = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", str(paper.get("title", "")).lower())
     title = re.sub(r"\s+", " ", title).strip()
-    year = paper.get("year") or paper.get("publication_year") or ""
-    return f"title:{title[:120]}:{year}"
+    if not title:
+        title = str(paper.get("link") or paper.get("url") or "unknown")
+    import hashlib
+    return "title:" + hashlib.sha256(title.encode("utf-8")).hexdigest()[:16]
 
 
 def normalize_authors(authors) -> str:
@@ -380,19 +583,28 @@ def upsert_papers(papers: Iterable[Dict], profile_id: str, mode: str,
     now = utc_now()
     inserted = 0
     updated = 0
+    skipped_cross_profile = 0
     star_counts = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0}
     with connect(db_path) as conn:
         for paper in papers:
             stable_id = paper_stable_id(paper)
-            existed = conn.execute(
-                "SELECT 1 FROM papers WHERE stable_id = ?", (stable_id,)
+            existing_row = conn.execute(
+                "SELECT profile_id FROM papers WHERE stable_id = ?", (stable_id,)
             ).fetchone()
+            if existing_row and existing_row[0] and existing_row[0] != profile_id:
+                skipped_cross_profile += 1
+                continue
+            existed = existing_row is not None
             links = _resolve_links_for_paper(paper)
             pushed_to_wechat = 1 if stable_id in pushed or paper.get("pushed_to_wechat") else 0
             publication_year = extract_year(paper.get("published_time") or paper.get("publication_date")) or as_int(paper.get("year"), 0)
             final_score = as_int(paper.get("final_score") or paper.get("relevance_score"))
             citations = as_int(paper.get("citation_count"))
             abstract_complete = bool(paper.get("abstract_is_complete"))
+            abstract_status = (
+                paper.get("abstract_fetch_status")
+                or ("complete" if abstract_complete else "snippet" if paper.get("abstract_source") else "missing")
+            )
             system_rating = as_int(paper.get("system_rating")) or rating_from_score(final_score)
             display_url = links.get("display_url") or paper.get("display_url") or paper.get("link") or paper.get("url", "")
             star_counts[min(5, max(1, system_rating))] = star_counts.get(min(5, max(1, system_rating)), 0) + 1
@@ -411,11 +623,11 @@ def upsert_papers(papers: Iterable[Dict], profile_id: str, mode: str,
                     eissn, journal_rank_source, journal_matched, journal_match_method,
                     jcr_impact_factor, jcr_year, cas_category, cas_top, cas_warning,
                     cnki_composite_if, cnki_comprehensive_if, core_tags, ccf_rank,
-                    journal_quality_score, created_at, updated_at
+                    journal_quality_score, abstract_fetch_status, last_run_id, ingest_mode,
+                    query_used, filter_reason, is_relevant, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(stable_id) DO UPDATE SET
-                    profile_id=excluded.profile_id,
                     title=excluded.title,
                     authors=excluded.authors,
                     year=excluded.year,
@@ -471,6 +683,12 @@ def upsert_papers(papers: Iterable[Dict], profile_id: str, mode: str,
                     core_tags=excluded.core_tags,
                     ccf_rank=excluded.ccf_rank,
                     journal_quality_score=excluded.journal_quality_score,
+                    abstract_fetch_status=excluded.abstract_fetch_status,
+                    last_run_id=excluded.last_run_id,
+                    ingest_mode=excluded.ingest_mode,
+                    query_used=excluded.query_used,
+                    filter_reason=excluded.filter_reason,
+                    is_relevant=excluded.is_relevant,
                     updated_at=excluded.updated_at
                 """,
                 (
@@ -523,6 +741,12 @@ def upsert_papers(papers: Iterable[Dict], profile_id: str, mode: str,
                     paper.get("ingestion_tier", "full"),
                     links.get("paper_url") or display_url,
                     *_journal_rank_db_values(paper),
+                    abstract_status,
+                    as_int(paper.get("last_run_id")),
+                    paper.get("ingest_mode") or mode,
+                    paper.get("query_used", ""),
+                    paper.get("filter_reason", ""),
+                    1 if paper.get("is_relevant", 1) else 0,
                     now,
                     now,
                 ),
@@ -536,6 +760,7 @@ def upsert_papers(papers: Iterable[Dict], profile_id: str, mode: str,
         "ingested": inserted + updated,
         "inserted": inserted,
         "updated": updated,
+        "skipped_cross_profile": skipped_cross_profile,
         "star5": star_counts[5],
         "star4": star_counts[4],
         "star3": star_counts[3],
@@ -590,6 +815,20 @@ def save_reading_note_for_paper(paper_id: str, paper: Dict, db_path: str = DB_PA
         upsert_reading_note(conn, paper_id, paper)
 
 
+def stamp_paper_lineage(run_id: int, stable_ids: Iterable[str], db_path: str = DB_PATH) -> None:
+    ids = [sid for sid in stable_ids if sid]
+    if not run_id or not ids:
+        return
+    init_db(db_path)
+    now = utc_now()
+    with connect(db_path) as conn:
+        for stable_id in ids:
+            conn.execute(
+                "UPDATE papers SET last_run_id = ?, updated_at = ? WHERE stable_id = ?",
+                (run_id, now, stable_id),
+            )
+
+
 def record_run(profile: str, mode: str, stats: Dict, report_path: str = "",
                pushed_count: int = 0, db_path: str = DB_PATH) -> int:
     init_db(db_path)
@@ -600,9 +839,11 @@ def record_run(profile: str, mode: str, stats: Dict, report_path: str = "",
                 profile, mode, total_found, kept_after_relevance, new_papers,
                 abstract_completed, if_matched, recommended_count, pushed_count,
                 report_path, run_time, ingested_count, updated_count, skipped_duplicate,
-                star5, star4, star3, star2, star1, skipped_low_score
+                star5, star4, star3, star2, star1, skipped_low_score,
+                run_year, max_results, data_sources, google_query, ingest_policy,
+                skipped_irrelevant, doi_completed, skipped_cross_profile, filter_stats_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 profile,
@@ -625,6 +866,16 @@ def record_run(profile: str, mode: str, stats: Dict, report_path: str = "",
                 as_int(stats.get("star2")),
                 as_int(stats.get("star1")),
                 as_int(stats.get("skipped_low_score")),
+                str(stats.get("run_year") or ""),
+                as_int(stats.get("max_results")),
+                str(stats.get("data_sources") or ""),
+                str(stats.get("google_query") or ""),
+                str(stats.get("ingest_policy") or ""),
+                as_int(stats.get("skipped_irrelevant")),
+                as_int(stats.get("doi_completed")),
+                as_int(stats.get("skipped_cross_profile")),
+                stats.get("filter_stats_json") if isinstance(stats.get("filter_stats_json"), str)
+                else json.dumps(stats.get("filter_stats_json") or {}, ensure_ascii=False),
             ),
         )
         return int(cursor.lastrowid)
@@ -702,6 +953,52 @@ def get_run(run_id: int, db_path: str = DB_PATH) -> Optional[Dict]:
     with connect(db_path) as conn:
         row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return dict(row) if row else None
+
+
+def record_run_candidates(run_id: int, candidates: List[Dict], db_path: str = DB_PATH) -> None:
+    if not run_id or not candidates:
+        return
+    init_db(db_path)
+    with connect(db_path) as conn:
+        conn.execute("DELETE FROM run_candidates WHERE run_id = ?", (run_id,))
+        conn.executemany(
+            """
+            INSERT INTO run_candidates (
+                run_id, stable_id, title, year, journal, url,
+                relevance_score, status, filter_reason, sort_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    run_id,
+                    item.get("stable_id") or item.get("id") or "",
+                    item.get("title") or "",
+                    as_int(item.get("year")),
+                    item.get("journal") or "",
+                    item.get("url") or item.get("paper_url") or "",
+                    as_int(item.get("relevance_score")),
+                    item.get("status") or "filtered",
+                    item.get("filter_reason") or "",
+                    idx,
+                )
+                for idx, item in enumerate(candidates)
+            ],
+        )
+
+
+def get_run_candidates(run_id: int, db_path: str = DB_PATH) -> List[Dict]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT stable_id, title, year, journal, url, relevance_score, status, filter_reason
+            FROM run_candidates
+            WHERE run_id = ?
+            ORDER BY sort_order, id
+            """,
+            (run_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def recommendation_level_from_score(score: int) -> str:

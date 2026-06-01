@@ -63,9 +63,10 @@ except ImportError:
     load_journal_metrics = None
     match_journal_metrics = None
 try:
-    from radar_db import record_run, sync_profiles, upsert_papers
+    from radar_db import record_run, record_run_candidates, sync_profiles, upsert_papers
 except ImportError:
     record_run = None
+    record_run_candidates = None
     sync_profiles = None
     upsert_papers = None
 
@@ -357,11 +358,57 @@ def stable_paper_id(paper: Dict) -> str:
 
 
 def build_search_keywords(profile: Dict) -> str:
-    include = profile.get("include_keywords") or []
+    include = list(profile.get("include_keywords") or [])
+    extra = os.environ.get("TRACKER_EXTRA_KEYWORDS", "").strip()
+    if extra:
+        for token in re.split(r"[,，;\n]+", extra):
+            token = token.strip()
+            if token and token not in include:
+                include.append(token)
     exclude = profile.get("exclude_keywords") or []
     include_query = " OR ".join([f'"{kw}"' if " " in kw else kw for kw in include])
     exclude_query = " ".join([f'-"{kw}"' if " " in kw else f"-{kw}" for kw in exclude])
-    return f"({include_query}) {exclude_query}".strip() if include_query else BASE_CONFIG["SEARCH_KEYWORDS"]
+    if include_query:
+        return f"({include_query}) {exclude_query}".strip()
+    fallback_terms = [
+        profile.get("google_scholar_query", ""),
+        profile.get("display_name", ""),
+        profile.get("name", ""),
+        profile.get("id", ""),
+    ]
+    fallback = next((str(term).strip() for term in fallback_terms if str(term or "").strip()), "")
+    if fallback:
+        quoted = f'"{fallback}"' if " " in fallback else fallback
+        return f"{quoted} {exclude_query}".strip()
+    return BASE_CONFIG["SEARCH_KEYWORDS"]
+
+
+def build_google_scholar_query(profile: Dict) -> str:
+    """Tighter Scholar query: avoid generic STEM / stem-cell noise."""
+    custom = (
+        os.environ.get("TRACKER_GOOGLE_QUERY")
+        or profile.get("google_scholar_query")
+        or ""
+    ).strip()
+    if custom:
+        return custom
+    must = profile.get("must_have_any") or profile.get("include_keywords") or []
+    quoted = []
+    for kw in must[:5]:
+        text = str(kw).strip()
+        if not text:
+            continue
+        quoted.append(f'"{text}"' if (" " in text or "-" in text) else text)
+    include_query = " OR ".join(quoted) if quoted else build_search_keywords(profile)
+    exclude = list(profile.get("exclude_keywords") or [])
+    for noise in (
+        "stem cell", "STEM education", "pluripotent", "mesenchymal",
+        "student", "teacher", "school", "learning", "education",
+    ):
+        if noise not in exclude:
+            exclude.append(noise)
+    exclude_query = " ".join([f'-"{kw}"' if " " in kw else f"-{kw}" for kw in exclude])
+    return f"({include_query}) {exclude_query}".strip()
 
 
 def get_score_rules(profile: Dict) -> Dict:
@@ -450,8 +497,28 @@ def filter_relevant_papers(papers: List[Dict], profile: Dict) -> List[Dict]:
     return full_tier
 
 
+def skip_relevance_filter(profile: Optional[Dict] = None) -> bool:
+    if os.environ.get("TRACKER_NO_RELEVANCE_FILTER") == "1":
+        return True
+    if profile and profile.get("no_relevance_filter"):
+        return True
+    return False
+
+
 def partition_papers_for_ingest(papers: List[Dict], profile: Dict) -> tuple:
     """Split into full-tier (must_have + min_score) and low-tier (ingest_min only) papers."""
+    if skip_relevance_filter(profile):
+        full_tier: List[Dict] = []
+        for paper in papers:
+            paper["stable_id"] = stable_paper_id(paper)
+            paper["id"] = paper["stable_id"]
+            relevance = explain_paper_relevance(paper, profile)
+            paper["relevance_score"] = relevance["score"]
+            paper["relevance_explain"] = relevance
+            paper["ingestion_tier"] = "full"
+            full_tier.append(paper)
+        return full_tier, [], {"low_tier_count": 0, "skipped_low_score": 0}
+
     ingest_min = int(profile.get("ingest_min_score", 0))
     ingest_below = profile.get("ingest_below_must_have", True)
     full_tier: List[Dict] = []
@@ -619,9 +686,91 @@ def get_paper_metadata_by_arxiv(arxiv_id: str, api_key: Optional[str] = None) ->
     }
 
 
+def build_openalex_search_query(profile: Dict) -> str:
+    include = profile.get("include_keywords") or []
+    must = profile.get("must_have_any") or []
+    if include:
+        return " ".join(str(kw) for kw in include[:3])
+    if must:
+        return " ".join(str(kw) for kw in must[:3])
+    raw = BASE_CONFIG.get("SEARCH_KEYWORDS", "")
+    return re.sub(r'["()\-]', " ", raw.replace(" OR ", " ")).strip()[:120]
+
+
+def _paper_dedupe_keys(paper: Dict) -> set:
+    keys = set()
+    title_key = normalize_title(paper.get("title", ""))
+    if title_key:
+        keys.add(f"title:{title_key}")
+    for field in ("doi", "arxiv_id", "semantic_scholar_id"):
+        value = paper.get(field)
+        if value:
+            keys.add(f"{field}:{str(value).lower()}")
+    pid = paper.get("id") or paper.get("stable_id")
+    if pid:
+        keys.add(f"id:{pid}")
+    return keys
+
+
+def merge_unique_papers(existing: List[Dict], extra: List[Dict]) -> List[Dict]:
+    seen: set = set()
+    merged = list(existing)
+    for paper in existing:
+        seen.update(_paper_dedupe_keys(paper))
+    for paper in extra:
+        keys = _paper_dedupe_keys(paper)
+        if keys & seen:
+            continue
+        seen.update(keys)
+        merged.append(paper)
+    return merged
+
+
+def _scholar_result_to_paper(res: Dict, index: int) -> Optional[Dict]:
+    try:
+        title = res.get("title", "无标题")
+        paper_id = f"scholar_{index}_{hashlib.sha256(str(res.get('link', title)).encode('utf-8')).hexdigest()[:16]}"
+        pub_info = res.get("publication_info", {})
+        authors = [a.get("name", "未知作者") for a in pub_info.get("authors", [])] if pub_info.get("authors") else ["未知作者"]
+        year = pub_info.get("year", "")
+        journal = pub_info.get("summary", "谷歌学术文献").split(",")[0] if "summary" in pub_info else "未知期刊"
+        abstract = res.get("snippet", "无摘要")
+        citation_count = 0
+        cited_by = (res.get("inline_links", {}) or {}).get("cited_by", {}) or {}
+        if cited_by.get("total") is not None:
+            citation_count = cited_by.get("total", 0)
+        link = res.get("link", res.get("resources", [{}])[0].get("link", "无链接")) if res.get("link") or res.get("resources") else "无链接"
+        return {
+            "id": paper_id,
+            "title": title,
+            "authors": authors,
+            "published_time": str(year or ""),
+            "year": year or "",
+            "abstract": abstract,
+            "link": link,
+            "journal": journal,
+            "impact_factor": "谷歌学术不提供",
+            "citation_count": citation_count,
+            "metadata_source": "Google Scholar",
+        }
+    except Exception:
+        return None
+
+
+def _execute_serpapi_search(params: Dict, serp_api_key: str) -> Dict:
+    if Client is not None:
+        return Client(api_key=serp_api_key).search(params)
+    return GoogleSearch(params).get_dict()
+
+
 # ===================== 新增：谷歌学术论文检索核心函数（完整版，爬全所有信息） =====================
-def fetch_google_scholar_papers(max_results: int, serp_api_key: str, profile: Optional[Dict] = None) -> List[Dict]:
-    """通过 SerpApi 调用谷歌学术检索论文（修复版：抓取所有可用字段）"""
+def fetch_google_scholar_papers(
+    max_results: int,
+    serp_api_key: str,
+    profile: Optional[Dict] = None,
+    year: Optional[int] = None,
+) -> List[Dict]:
+    """通过 SerpApi 调用谷歌学术检索论文，支持翻页（每页最多 20 条）。"""
     if not serp_api_key:
         print("❌ 请输入 SerpApi API Key！")
         return []
@@ -629,74 +778,45 @@ def fetch_google_scholar_papers(max_results: int, serp_api_key: str, profile: Op
         print("❌ 缺少 SerpApi 依赖，请先安装 google-search-results。")
         return []
 
-    params = {
-        "engine": BASE_CONFIG["GOOGLE_SCHOLAR_ENGINE"],
-        "q": build_search_keywords(profile or {}),
-        "api_key": serp_api_key,
-        "hl": "zh-CN",
-        "num": max_results,
-        "start": 0,
-        "timeout": 60
-    }
-
-    try:
-        if Client is not None:
-            client = Client(api_key=serp_api_key)
-            results = client.search(params)
-        else:
-            results = GoogleSearch(params).get_dict()
-        organic_results = results.get("organic_results", [])
-        print(f"✅ 谷歌学术检索到 {len(organic_results)} 篇论文")
-    except Exception as e:
-        print(f"❌ 谷歌学术请求失败：{str(e)}")
-        return []
-
-    papers = []
-    for i, res in enumerate(organic_results):
+    profile = profile or {}
+    papers: List[Dict] = []
+    start = 0
+    label = f"【{year}年】" if year else ""
+    while len(papers) < max_results:
+        batch_size = min(20, max_results - len(papers))
+        params = {
+            "engine": BASE_CONFIG["GOOGLE_SCHOLAR_ENGINE"],
+            "q": build_google_scholar_query(profile),
+            "api_key": serp_api_key,
+            "hl": "zh-CN",
+            "num": batch_size,
+            "start": start,
+            "timeout": 60,
+        }
+        if year is not None:
+            params["as_ylo"] = year
+            params["as_yhi"] = year
         try:
-            # 核心：提取谷歌学术所有可用信息
-            title = res.get("title", "无标题")
-            paper_id = f"scholar_{i}_{hashlib.sha256(str(res.get('link', title)).encode('utf-8')).hexdigest()[:16]}"
-            pub_info = res.get("publication_info", {})
-
-            # 作者
-            authors = [a.get("name", "未知作者") for a in pub_info.get("authors", [])] if pub_info.get("authors") else [
-                "未知作者"]
-            # 发表年份 - 只存储年份，谷歌学术不提供具体日期
-            year = pub_info.get("year", "2025")
-            published_time = f"{year}"
-            # 期刊/出版物
-            journal = pub_info.get("summary", "谷歌学术文献").split(",")[0] if "summary" in pub_info else "未知期刊"
-            # 摘要
-            abstract = res.get("snippet", "无摘要")
-            citation_count = 0
-            inline_links = res.get("inline_links", {}) or {}
-            cited_by = inline_links.get("cited_by", {}) or {}
-            if cited_by.get("total") is not None:
-                citation_count = cited_by.get("total", 0)
-            # 论文链接
-            link = res.get("link", res.get("resources", [{}])[0].get("link", "无链接")) if res.get("link") or res.get(
-                "resources") else "无链接"
-            # 构造完整论文数据（所有字段填满）
-            paper = {
-                "id": paper_id,
-                "title": title,
-                "authors": authors,
-                "published_time": published_time,
-                "abstract": abstract,
-                "link": link,
-                "journal": journal,
-                "impact_factor": "谷歌学术不提供",
-                "citation_count": citation_count,
-                "metadata_source": "Google Scholar"
-            }
-            papers.append(paper)
-            time.sleep(1)
+            results = _execute_serpapi_search(params, serp_api_key)
+            organic_results = results.get("organic_results", []) or []
         except Exception as e:
-            print(f"论文解析失败：{e}")
-            continue
+            print(f"{label}Google Scholar 请求失败：{e}")
+            break
+        if not organic_results:
+            break
+        for i, res in enumerate(organic_results):
+            paper = _scholar_result_to_paper(res, start + i)
+            if paper:
+                if year is not None:
+                    paper["year"] = year
+                papers.append(paper)
+        if len(organic_results) < batch_size:
+            break
+        start += len(organic_results)
+        time.sleep(1.5)
 
-    return papers
+    print(f"{label}Google Scholar 检索到 {len(papers)} 篇")
+    return papers[:max_results]
 
 
 # ===================== 论文解析核心逻辑 =====================
@@ -888,24 +1008,31 @@ def fetch_daily_papers(time_range_days: int, max_results: int, api_key: Optional
 
     feed = feedparser.parse(response.content)
     papers = []
-    cutoff_time = datetime.now() - timedelta(days=time_range_days)
+    use_date_filter = time_range_days > 0
+    cutoff_time = datetime.now() - timedelta(days=time_range_days) if use_date_filter else None
 
     for entry in feed.entries:
         try:
             published_time = datetime.strptime(entry.published, "%Y-%m-%dT%H:%M:%SZ")
-            if published_time < cutoff_time:
+            if use_date_filter and published_time < cutoff_time:
                 continue
 
             arxiv_id = entry.id.split("/abs/")[-1].split("v")[0]
+            abstract_text = entry.summary.replace("\n", " ").strip()
             paper_base = {
                 "id": arxiv_id,
                 "arxiv_id": arxiv_id,
                 "title": entry.title.replace("\n", " ").strip(),
                 "authors": [author.name for author in entry.authors],
                 "published_time": published_time.strftime("%Y-%m-%d %H:%M"),
-                "abstract": entry.summary.replace("\n", " ").strip(),
+                "abstract": abstract_text,
+                "abstract_original": abstract_text,
+                "abstract_source": "arXiv",
+                "abstract_is_complete": True,
+                "abstract_fetch_status": "complete",
                 "link": entry.link,
-                "category": entry.arxiv_primary_category["term"]
+                "category": entry.arxiv_primary_category["term"],
+                "source": "arXiv",
             }
 
             if not os.environ.get("TRACKER_SKIP_S2_METADATA"):
@@ -1264,9 +1391,50 @@ def prepare_papers_for_ingest(papers: List[Dict], profile: Dict,
         item["abstract"] = item.get("abstract_original")
         try:
             from metadata_enricher import resolve_paper_links
-            item.update(resolve_paper_links(item))
+            if not os.environ.get("TRACKER_SKIP_METADATA"):
+                item.update(resolve_paper_links(item))
         except Exception:
             pass
+        if (
+            apply_journal_rank_to_paper is not None
+            and not os.environ.get("TRACKER_SKIP_METADATA")
+            and not (item.get("issn") or item.get("doi"))
+        ):
+            try:
+                from metadata_enricher import search_crossref, search_openalex, merge_metadata
+                for getter in (search_crossref, search_openalex):
+                    patch = getter(item)
+                    if patch:
+                        item = merge_metadata(item, patch)
+                        if item.get("journal_name"):
+                            item["journal"] = item["journal_name"]
+                    if item.get("issn") or item.get("doi"):
+                        break
+            except Exception:
+                pass
+        if apply_journal_rank_to_paper is not None and not os.environ.get("TRACKER_SKIP_JOURNAL_RANK"):
+            metrics_cache = getattr(prepare_papers_for_ingest, "_metrics_cache", None)
+            if metrics_cache is None and load_journal_metrics is not None:
+                metrics_cache = load_journal_metrics(quiet=True)
+                prepare_papers_for_ingest._metrics_cache = metrics_cache
+            if not os.environ.get("TRACKER_SKIP_AUTO_RATING"):
+                if not item.get("freshness_score"):
+                    item["freshness_score"] = freshness_score(item)
+                if not item.get("citation_score"):
+                    item["citation_score"] = citation_score(item)
+            apply_journal_rank_to_paper(item, metrics_cache)
+            if not os.environ.get("TRACKER_SKIP_AUTO_RATING"):
+                try:
+                    from radar_db import rating_from_score
+                    item["system_rating"] = rating_from_score(int(item.get("final_score") or 0))
+                except Exception:
+                    pass
+        elif not os.environ.get("TRACKER_SKIP_AUTO_RATING"):
+            try:
+                from radar_db import rating_from_score
+                item["system_rating"] = rating_from_score(int(item.get("final_score") or relevance))
+            except Exception:
+                pass
         prepared.append(item)
     return prepared
 
@@ -1283,28 +1451,145 @@ def touch_history_entries(history: Dict, papers: List[Dict], profile: Dict) -> N
         }
 
 
+def _run_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def finalize_run_stats(papers: List[Dict], stats: Dict, profile: Dict, mode: str) -> Dict:
+    """Aggregate run-level counters before record_run."""
+    stats = dict(stats)
+    stats["abstract_completed"] = sum(
+        1 for p in papers
+        if p.get("abstract_is_complete") or (p.get("abstract_original") or p.get("abstract", "")).strip()
+    )
+    stats["if_matched"] = sum(
+        1 for p in papers
+        if (p.get("impact_factor") or p.get("jcr_impact_factor") or "").strip()
+    )
+    stats["doi_completed"] = sum(1 for p in papers if (p.get("doi") or "").strip())
+    stats["recommended_count"] = sum(1 for p in papers if p.get("is_recommended"))
+    retrieved = _run_int(stats.get("retrieved"))
+    kept = _run_int(stats.get("kept_after_relevance"))
+    stats["skipped_irrelevant"] = max(
+        _run_int(stats.get("skipped_low_score")),
+        max(0, retrieved - kept),
+    )
+    filter_payload = {
+        "excluded_by_keywords": stats.get("excluded_by_keywords", 0),
+        "excluded_by_score": stats.get("excluded_by_score", 0),
+        "excluded_by_must_have": stats.get("excluded_by_must_have", 0),
+        "filtered_reasons": stats.get("filtered_reasons") or {},
+    }
+    for key in ("yearly_breakdown", "year_span", "max_papers_per_year"):
+        if stats.get(key) is not None:
+            filter_payload[key] = stats.get(key)
+    stats["filter_stats_json"] = json.dumps(filter_payload, ensure_ascii=False)
+    stats["data_sources"] = os.environ.get("TRACKER_DATA_SOURCES") or stats.get("data_sources") or (
+        "arXiv, Semantic Scholar" if mode == "daily" else "Google Scholar, OpenAlex, Crossref"
+    )
+    stats["ingest_policy"] = os.environ.get("TRACKER_INGEST_POLICY") or stats.get("ingest_policy") or (
+        "all" if skip_relevance_filter(profile) else "relevance"
+    )
+    stats["run_year"] = os.environ.get("TRACKER_RUN_YEAR") or stats.get("run_year") or ""
+    stats["max_results"] = _run_int(os.environ.get("TRACKER_MAX_RESULTS") or stats.get("max_results"))
+    stats["google_query"] = (
+        os.environ.get("TRACKER_GOOGLE_QUERY")
+        or stats.get("google_query")
+        or profile.get("google_scholar_query", "")
+    )
+    return stats
+
+
+def build_run_candidates(all_papers: List[Dict], full_tier: List[Dict], low_tier: List[Dict],
+                         ingested_ids: Optional[Iterable[str]] = None) -> List[Dict]:
+    full_ids = {p.get("id") or p.get("stable_id") for p in full_tier}
+    low_ids = {p.get("id") or p.get("stable_id") for p in low_tier}
+    ingested = set(ingested_ids or [])
+    candidates = []
+    for paper in all_papers:
+        pid = paper.get("id") or paper.get("stable_id") or stable_paper_id(paper)
+        explain = paper.get("relevance_explain") or {}
+        reasons = explain.get("reasons") or []
+        if pid in ingested:
+            status = "ingested"
+        elif pid in full_ids:
+            status = "full_tier"
+        elif pid in low_ids:
+            status = "low_tier"
+        else:
+            status = "filtered"
+        if reasons:
+            reason_text = "；".join(reasons)
+        elif status == "filtered":
+            reason_text = ""
+        else:
+            score = paper.get("relevance_score")
+            reason_text = f"相关性分 {score}" if score is not None else f"状态：{status}"
+        candidates.append({
+            "stable_id": pid,
+            "title": paper.get("title", ""),
+            "year": paper.get("year"),
+            "journal": paper.get("journal", ""),
+            "url": paper.get("url") or paper.get("arxiv_url") or "",
+            "relevance_score": paper.get("relevance_score"),
+            "status": status,
+            "filter_reason": reason_text,
+        })
+    return candidates
+
+
 def persist_run_outputs(papers: List[Dict], profile: Dict, mode: str, stats: Dict,
-                        report_path: str = "", pushed_papers: Optional[List[Dict]] = None) -> Optional[int]:
+                        report_path: str = "", pushed_papers: Optional[List[Dict]] = None,
+                        candidates: Optional[List[Dict]] = None,
+                        dry_run: bool = False) -> Optional[int]:
     if os.environ.get("TRACKER_SKIP_DB"):
         print("⚠️ 已跳过 SQLite 写入（TRACKER_SKIP_DB=1）")
         return None
     if upsert_papers is None or record_run is None:
         print("⚠️ SQLite 数据层不可用，已跳过数据库写入。")
         return None
-    try:
-        from abstract_translate import ensure_paper_chinese_abstract
-        papers = [ensure_paper_chinese_abstract(paper) for paper in papers]
-    except Exception as e:
-        print(f"⚠️ 摘要中文翻译跳过：{e}")
+    if not dry_run:
+        try:
+            from abstract_translate import ensure_paper_chinese_abstract
+            papers = [ensure_paper_chinese_abstract(paper) for paper in papers]
+        except Exception as e:
+            print(f"⚠️ 摘要中文翻译跳过：{e}")
     pushed_ids = [
         str(paper.get("stable_id") or paper.get("id") or paper.get("doi") or "")
         for paper in (pushed_papers or [])
     ]
+    stats = finalize_run_stats(papers, stats, profile, mode)
+    query_used = stats.get("google_query") or profile.get("google_scholar_query", "")
+    for paper in papers:
+        paper["ingest_mode"] = mode
+        paper["query_used"] = query_used
+        explain = paper.get("relevance_explain") or {}
+        if not paper.get("filter_reason"):
+            reasons = explain.get("reasons") or []
+            paper["filter_reason"] = "；".join(reasons) if reasons else ""
+        paper["is_relevant"] = 1 if paper.get("ingestion_tier") not in ("skip", "filtered") else 0
+    ingest_stats = {"ingested": 0, "inserted": 0, "updated": 0, "skipped_cross_profile": 0}
+    upsert_error = None
+    if dry_run:
+        stats["ingested_count"] = 0
+        stats["updated_count"] = 0
+        print("🔍 试跑预览：未写入文献库，仅保存运行记录与检索列表。")
+    else:
+        try:
+            ingest_stats = upsert_papers(papers, profile.get("id", ""), mode, report_path, pushed_ids)
+            stats.update(ingest_stats)
+            stats["ingested_count"] = ingest_stats.get("ingested", 0)
+            stats["updated_count"] = ingest_stats.get("updated", 0)
+        except Exception as e:
+            upsert_error = e
+            stats["ingested_count"] = 0
+            stats["updated_count"] = 0
+            print(f"⚠️ 文献入库失败（仍将保存本次运行记录）：{e}")
     try:
-        ingest_stats = upsert_papers(papers, profile.get("id", ""), mode, report_path, pushed_ids)
-        stats.update(ingest_stats)
-        stats["ingested_count"] = ingest_stats.get("ingested", 0)
-        stats["updated_count"] = ingest_stats.get("updated", 0)
+        stats = finalize_run_stats(papers, stats, profile, mode)
         run_id = record_run(
             profile.get("id", ""),
             mode,
@@ -1312,10 +1597,27 @@ def persist_run_outputs(papers: List[Dict], profile: Dict, mode: str, stats: Dic
             report_path,
             len([pid for pid in pushed_ids if pid]),
         )
-        print(
-            f"✅ SQLite 数据库已更新：入库 {ingest_stats.get('ingested', 0)} 篇"
-            f"（新增 {ingest_stats.get('inserted', 0)}，更新 {ingest_stats.get('updated', 0)}）"
-        )
+        if run_id and candidates and record_run_candidates is not None:
+            record_run_candidates(run_id, candidates)
+        if run_id and not dry_run and papers and not upsert_error:
+            try:
+                from radar_db import stamp_paper_lineage
+                stamp_paper_lineage(
+                    run_id,
+                    [str(p.get("stable_id") or p.get("id") or stable_paper_id(p)) for p in papers],
+                )
+            except Exception:
+                pass
+        if upsert_error:
+            print(
+                f"⚠️ 运行记录已保存（run #{run_id}），但文献未入库：{upsert_error}"
+                "；Excel/Markdown 输出不受影响。"
+            )
+        else:
+            print(
+                f"✅ SQLite 数据库已更新：入库 {ingest_stats.get('ingested', 0)} 篇"
+                f"（新增 {ingest_stats.get('inserted', 0)}，更新 {ingest_stats.get('updated', 0)}）"
+            )
         return run_id
     except Exception as e:
         print(f"⚠️ SQLite 数据库写入失败，Excel/Markdown 输出不受影响：{e}")
@@ -1334,7 +1636,11 @@ def run_daily_mode(time_range_days: int, max_results: int, auto_excel_append: bo
     """每日模式主执行流程"""
     notify = notify or os.environ.get("TRACKER_NOTIFY", "")
     history = load_history()
-    print(f"正在检索过去{time_range_days}天的「{profile.get('name', profile['id'])}」方向论文...")
+    profile_label = profile.get('name', profile['id'])
+    if time_range_days > 0:
+        print(f"正在检索过去{time_range_days}天的「{profile_label}」方向论文...")
+    else:
+        print(f"正在检索最新 {max_results} 篇「{profile_label}」方向论文...")
     latest_papers = fetch_daily_papers(time_range_days, max_results, api_key, profile)
     full_tier, low_tier, tier_stats = partition_papers_for_ingest(latest_papers, profile)
     relevant_papers = full_tier + low_tier
@@ -1355,17 +1661,70 @@ def run_daily_mode(time_range_days: int, max_results: int, auto_excel_append: bo
         print("\n===== Markdown 科研日报预览 =====")
         print(build_daily_report(new_papers, profile, stats, time_range_days, dry_run=True))
         print(f"\n预览：若正式运行，将把 {len(ingest_papers)} 篇相关论文写入数据库（其中新增 {len(new_papers)} 篇）。")
+        persist_run_outputs(
+            [],
+            profile,
+            "daily",
+            stats,
+            candidates=build_run_candidates(
+                latest_papers,
+                full_tier,
+                low_tier,
+                {p.get("stable_id") or p.get("id") for p in ingest_papers},
+            ),
+            dry_run=True,
+        )
         return
 
     if not relevant_papers:
         print("✅ 今日未检索到相关论文")
-        persist_run_outputs([], profile, "daily", stats)
+        persist_run_outputs(
+            [],
+            profile,
+            "daily",
+            stats,
+            candidates=build_run_candidates(latest_papers, full_tier, low_tier),
+        )
         save_history(history)
+        return
+
+    if skip_relevance_filter(profile):
+        print(f"全部入库模式：直接写入 {len(ingest_papers)} 篇（不做相关性筛选，不逐篇 AI 解析）")
+        report_path = ""
+        if not os.environ.get("TRACKER_SKIP_MARKDOWN") and new_papers:
+            report_path = write_daily_report(new_papers[:30], profile, stats, time_range_days)
+        persist_run_outputs(
+            ingest_papers,
+            profile,
+            "daily",
+            stats,
+            report_path,
+            candidates=build_run_candidates(
+                latest_papers,
+                full_tier,
+                low_tier,
+                {p.get("stable_id") or p.get("id") for p in ingest_papers},
+            ),
+        )
+        touch_history_entries(history, relevant_papers, profile)
+        save_history(history)
+        print(f"🎉 每日论文追踪完成：入库 {len(ingest_papers)} 篇")
         return
 
     if not new_papers:
         print(f"✅ 无新增论文，仍将更新数据库中 {len(ingest_papers)} 篇相关论文记录")
-        persist_run_outputs(ingest_papers, profile, "daily", stats)
+        persist_run_outputs(
+            ingest_papers,
+            profile,
+            "daily",
+            stats,
+            candidates=build_run_candidates(
+                latest_papers,
+                full_tier,
+                low_tier,
+                {p.get("stable_id") or p.get("id") for p in ingest_papers},
+            ),
+        )
         touch_history_entries(history, relevant_papers, profile)
         save_history(history)
         return
@@ -1409,6 +1768,12 @@ def run_daily_mode(time_range_days: int, max_results: int, auto_excel_append: bo
         stats,
         report_path,
         [p for p in merged_ingest if p.get("is_recommended")][:3] if notify else [],
+        candidates=build_run_candidates(
+            latest_papers,
+            full_tier,
+            low_tier,
+            {p.get("stable_id") or p.get("id") for p in merged_ingest},
+        ),
     )
 
     touch_history_entries(history, relevant_papers, profile)
@@ -1416,72 +1781,215 @@ def run_daily_mode(time_range_days: int, max_results: int, auto_excel_append: bo
     print(f"🎉 每日论文追踪完成：入库 {len(merged_ingest)} 篇，其中新增解析 {len(new_papers)} 篇")
 
 
-# ===================== 模式 2：年度论文统计 Excel 生成=====================
-def fetch_annual_papers(year: int, max_papers: int, api_key: Optional[str] = None,
-                        profile: Optional[Dict] = None) -> List[Dict]:
-    """检索指定年份的论文"""
+def fetch_google_scholar_papers_for_year(
+    year: int, max_results: int, serp_api_key: str, profile: Optional[Dict] = None
+) -> List[Dict]:
+    """按年份从 Google Scholar 检索（SerpApi as_ylo/as_yhi）。"""
+    return fetch_google_scholar_papers(max_results, serp_api_key, profile, year=year)
+
+
+def _openalex_abstract(index: Dict) -> str:
+    if not index:
+        return ""
+    positions = []
+    for word, word_positions in index.items():
+        for pos in word_positions:
+            positions.append((pos, word))
+    return " ".join(word for _, word in sorted(positions)).strip()
+
+
+def fetch_annual_papers_openalex(
+    year: int, max_papers: int, profile: Optional[Dict] = None
+) -> List[Dict]:
+    """OpenAlex 按年份检索，作为 Semantic Scholar 限流时的回退源。"""
     if requests is None:
-        print("❌ 缺少 requests 依赖，无法检索 Semantic Scholar。请先安装 requirements.txt。")
+        return []
+    profile = profile or {}
+    query = build_openalex_search_query(profile)
+    if not query:
+        return []
+    papers: List[Dict] = []
+    page = 1
+    while len(papers) < max_papers:
+        per_page = min(100, max_papers - len(papers))
+        params = {
+            "search": query,
+            "filter": f"publication_year:{year}",
+            "per-page": per_page,
+            "page": page,
+            "select": "id,title,doi,publication_year,publication_date,authorships,primary_location,abstract_inverted_index,cited_by_count,ids",
+        }
+        try:
+            response = requests.get("https://api.openalex.org/works", params=params, timeout=30)
+            if response.status_code == 429:
+                wait = min(30, 5 * page)
+                print(f"【{year}年】OpenAlex 限流，等待 {wait} 秒后重试…")
+                time.sleep(wait)
+                continue
+            if response.status_code != 200:
+                print(f"【{year}年】OpenAlex 检索失败：{response.status_code}")
+                break
+            payload = response.json()
+        except Exception as e:
+            print(f"【{year}年】OpenAlex 请求异常：{e}")
+            break
+        batch = payload.get("results", []) or []
+        if not batch:
+            break
+        for item in batch:
+            try:
+                source = ((item.get("primary_location") or {}).get("source") or {})
+                issn_list = source.get("issn") or []
+                external_ids = item.get("ids") or {}
+                doi = str(item.get("doi") or external_ids.get("doi") or "").replace("https://doi.org/", "")
+                arxiv_raw = external_ids.get("arxiv") or ""
+                arxiv_id = arxiv_raw.rsplit("/", 1)[-1] if arxiv_raw else ""
+                abstract = _openalex_abstract(item.get("abstract_inverted_index") or {})
+                authors = [
+                    (a.get("author") or {}).get("display_name", "")
+                    for a in (item.get("authorships") or [])
+                ]
+                pub_date = item.get("publication_date") or str(item.get("publication_year") or year)
+                papers.append({
+                    "id": arxiv_id or doi or str(item.get("id", "")).rsplit("/", 1)[-1],
+                    "arxiv_id": arxiv_id,
+                    "doi": doi,
+                    "title": item.get("title") or "无标题",
+                    "authors": [a for a in authors if a],
+                    "link": item.get("id") or "",
+                    "journal": source.get("display_name") or "未知期刊",
+                    "issn": issn_list[0] if issn_list else "",
+                    "impact_factor": "待补充",
+                    "published_time": pub_date,
+                    "year": item.get("publication_year") or year,
+                    "abstract": abstract or "无摘要",
+                    "abstract_original": abstract,
+                    "abstract_source": "OpenAlex" if abstract else "",
+                    "abstract_is_complete": bool(abstract),
+                    "citation_count": item.get("cited_by_count") or 0,
+                    "metadata_source": "OpenAlex",
+                })
+            except Exception:
+                continue
+        meta = payload.get("meta") or {}
+        total = int(meta.get("count") or 0)
+        if len(batch) < per_page or page * per_page >= total:
+            break
+        page += 1
+        time.sleep(0.8)
+    print(f"【{year}年】OpenAlex 检索到 {len(papers)} 篇")
+    return papers[:max_papers]
+
+
+def fetch_annual_papers_semantic_scholar(
+    year: int, max_papers: int, api_key: Optional[str] = None, profile: Optional[Dict] = None
+) -> List[Dict]:
+    """Semantic Scholar 按 year 参数检索，支持分页与 429 退避。"""
+    if requests is None:
+        print("❌ 缺少 requests 依赖，无法检索 Semantic Scholar。")
         return []
     profile = profile or {}
     headers = {"x-api-key": api_key} if api_key else {}
-    params = {
-        "query": build_search_keywords(profile),
-        "publicationDate": f"{year}-01-01 TO {year}-12-31",
-        "fields": "paperId,title,externalIds,authors,venue,publicationDate,url,abstract",
-        "limit": max_papers,
-        "sort": "publicationDate:desc"
-    }
+    papers: List[Dict] = []
+    offset = 0
+    while len(papers) < max_papers:
+        limit = min(100, max_papers - len(papers))
+        params = {
+            "query": build_search_keywords(profile),
+            "year": str(year),
+            "fields": "paperId,title,externalIds,authors,venue,publicationDate,url,abstract,year",
+            "limit": limit,
+            "offset": offset,
+            "sort": "publicationDate:desc",
+        }
+        results = None
+        for retry in range(3 if api_key else 2):
+            try:
+                response = requests.get(
+                    BASE_CONFIG["SEMANTIC_SCHOLAR_API_URL"] + "/search",
+                    headers=headers,
+                    params=params,
+                    timeout=25,
+                )
+                if response.status_code == 200:
+                    results = response.json()
+                    break
+                if response.status_code == 429:
+                    wait = min(30, 6 * (retry + 1))
+                    print(f"【{year}年】Semantic Scholar 限流，等待 {wait} 秒后重试… ({retry + 1}/{3 if api_key else 2})")
+                    time.sleep(wait)
+                else:
+                    print(f"【{year}年】Semantic Scholar 检索失败：{response.status_code}")
+                    break
+            except Exception as e:
+                print(f"【{year}年】Semantic Scholar 请求异常：{e}")
+                time.sleep(4)
+        if not results:
+            break
+        batch = results.get("data", []) or []
+        if not batch:
+            break
+        for paper_data in batch:
+            try:
+                arxiv_id = paper_data.get("externalIds", {}).get("ArXiv", "")
+                papers.append({
+                    "id": arxiv_id if arxiv_id else str(hash(paper_data.get("title", ""))),
+                    "arxiv_id": arxiv_id,
+                    "semantic_scholar_id": paper_data.get("paperId", ""),
+                    "title": paper_data.get("title", "无标题"),
+                    "authors": [author.get("name", "") for author in paper_data.get("authors", [])],
+                    "link": paper_data.get("url", ""),
+                    "journal": paper_data.get("venue", "预印本"),
+                    "impact_factor": "待补充",
+                    "published_time": paper_data.get("publicationDate", f"{year}-01-01"),
+                    "year": paper_data.get("year") or year,
+                    "abstract": paper_data.get("abstract", "无摘要"),
+                    "metadata_source": "Semantic Scholar",
+                })
+            except Exception:
+                continue
+        offset += len(batch)
+        if len(batch) < limit:
+            break
+        time.sleep(2.0 if not api_key else 1.2)
+    print(f"【{year}年】Semantic Scholar 检索到 {len(papers)} 篇")
+    return papers[:max_papers]
 
-    results = None
-    for retry in range(3):
-        try:
-            response = requests.get(
-                BASE_CONFIG["SEMANTIC_SCHOLAR_API_URL"] + "/search",
-                headers=headers,
-                params=params,
-                timeout=20
-            )
-            if response.status_code == 200:
-                results = response.json()
-                break
-            elif response.status_code == 429:
-                print(f"【{year}年】API 限流，等待5秒后重试...")
-                time.sleep(5)
-            else:
-                print(f"【{year}年】检索失败：{response.status_code}")
-                break
-        except Exception as e:
-            print(f"【{year}年】请求异常：{str(e)}")
-            time.sleep(3)
 
-    if not results:
-        return []
-
-    papers = []
-    for paper_data in results.get("data", []):
-        try:
-            arxiv_id = paper_data.get("externalIds", {}).get("ArXiv", "")
-            paper = {
-                "id": arxiv_id if arxiv_id else str(hash(paper_data.get("title", ""))),
-                "arxiv_id": arxiv_id,
-                "semantic_scholar_id": paper_data.get("paperId", ""),
-                "title": paper_data.get("title", "无标题"),
-                "authors": [author.get("name", "") for author in paper_data.get("authors", [])],
-                "link": paper_data.get("url", ""),
-                "journal": paper_data.get("venue", "预印本"),
-                "impact_factor": "待补充",
-                "published_time": paper_data.get("publicationDate", f"{year}-01-01 00:00"),
-                "abstract": paper_data.get("abstract", "无摘要")
-            }
-            papers.append(paper)
-        except:
-            continue
-    return papers
+def fetch_annual_papers(
+    year: int,
+    max_papers: int,
+    api_key: Optional[str] = None,
+    profile: Optional[Dict] = None,
+    serp_api_key: Optional[str] = None,
+) -> List[Dict]:
+    """检索指定年份论文：Scholar → OpenAlex → Semantic Scholar 多源合并。"""
+    profile = profile or {}
+    serp_key = serp_api_key or os.environ.get("SERPAPI_API_KEY", "")
+    papers: List[Dict] = []
+    if serp_key:
+        papers = fetch_google_scholar_papers_for_year(year, max_papers, serp_key, profile)
+    if len(papers) < max_papers:
+        need = max_papers - len(papers)
+        oa_papers = fetch_annual_papers_openalex(year, need, profile)
+        papers = merge_unique_papers(papers, oa_papers)
+    if len(papers) < max_papers:
+        need = max_papers - len(papers)
+        try_s2 = bool(api_key) or len(papers) == 0
+        if try_s2:
+            s2_papers = fetch_annual_papers_semantic_scholar(year, need, api_key, profile)
+            papers = merge_unique_papers(papers, s2_papers)
+        elif len(papers) > 0:
+            print(f"【{year}年】OpenAlex 已满足配额，跳过 Semantic Scholar（无 API Key 且已有结果）")
+    if not papers:
+        print(f"【{year}年】所有数据源均未返回结果（可检查 API Key 或网络）")
+    else:
+        print(f"【{year}年】合并后共 {len(papers)} 篇")
+    return papers[:max_papers]
 
 
 def run_annual_summary_mode(start_year: int, end_year: int, max_papers_per_year: int, api_key: Optional[str],
-                            profile: Dict, dry_run: bool = False):
+                            profile: Dict, dry_run: bool = False, serp_api_key: Optional[str] = None):
     """年度统计模式主执行流程"""
     history = load_history()
     yearly_papers = {}
@@ -1490,11 +1998,22 @@ def run_annual_summary_mode(start_year: int, end_year: int, max_papers_per_year:
     yearly_relevant_papers = {}
     all_parsed_papers = []
     all_ingest_papers: List[Dict] = []
+    all_candidates: List[Dict] = []
+    serp_key = serp_api_key or os.environ.get("SERPAPI_API_KEY", "")
 
-    print(f"===== 开始检索{start_year}-{end_year}年「{profile.get('name', profile['id'])}」方向论文 =====")
+    print(
+        f"===== 开始检索{start_year}-{end_year}年「{profile.get('name', profile['id'])}」方向论文 "
+        f"（每年最多 {max_papers_per_year} 篇）====="
+    )
+    if serp_key:
+        print("年份区间数据源：Google Scholar → OpenAlex → Semantic Scholar（多源合并）")
+    else:
+        print("年份区间数据源：OpenAlex → Semantic Scholar（建议配置 SERPAPI_API_KEY 以启用 Scholar）")
+
+    year_count = end_year - start_year + 1
     for year in range(start_year, end_year + 1):
         print(f"【{year}年】正在检索论文...")
-        papers = fetch_annual_papers(year, max_papers_per_year, api_key, profile)
+        papers = fetch_annual_papers(year, max_papers_per_year, api_key, profile, serp_key)
         full_tier, low_tier, tier_stats = partition_papers_for_ingest(papers, profile)
         relevant_papers = full_tier + low_tier
         new_papers = filter_new_papers(relevant_papers, history)
@@ -1504,6 +2023,15 @@ def run_annual_summary_mode(start_year: int, end_year: int, max_papers_per_year:
         year_stats = analyze_filtering(papers, full_tier, new_papers, history, profile)
         year_stats.update(tier_stats)
         yearly_stats[year] = year_stats
+        ingested_ids = {p.get("id") or stable_paper_id(p) for p in relevant_papers}
+        all_candidates.extend(
+            build_run_candidates(
+                papers,
+                full_tier,
+                low_tier,
+                ingested_ids,
+            )
+        )
         new_ids = {p.get("id") or stable_paper_id(p) for p in new_papers}
         ingest_batch = prepare_papers_for_ingest(relevant_papers, profile, recommended_ids=new_ids)
         for item in ingest_batch:
@@ -1513,7 +2041,10 @@ def run_annual_summary_mode(start_year: int, end_year: int, max_papers_per_year:
 
         if not dry_run:
             touch_history_entries(history, relevant_papers, profile)
-        time.sleep(2)
+        pause = 2 if serp_key else 6
+        if year_count > 3:
+            pause += 2
+        time.sleep(pause)
 
     if dry_run:
         print("===== 预览模式：仅显示新增论文，不写入 Excel 和历史记录 =====")
@@ -1524,11 +2055,47 @@ def run_annual_summary_mode(start_year: int, end_year: int, max_papers_per_year:
         return
 
     save_history(history)
+    total_stats = {
+        "retrieved": sum(stats.get("retrieved", 0) for stats in yearly_stats.values()),
+        "kept_after_relevance": sum(stats.get("kept_after_relevance", 0) for stats in yearly_stats.values()),
+        "new_papers": sum(len(papers) for papers in yearly_papers.values()),
+        "abstract_completed": sum(1 for p in all_ingest_papers if p.get("abstract_is_complete")),
+        "if_matched": sum(1 for p in all_ingest_papers if p.get("journal_matched")),
+        "max_papers_per_year": max_papers_per_year,
+        "year_span": f"{start_year}-{end_year}",
+        "yearly_breakdown": {
+            str(y): {
+                "retrieved": yearly_stats[y].get("retrieved", 0),
+                "kept": yearly_stats[y].get("kept_after_relevance", 0),
+            }
+            for y in sorted(yearly_stats.keys())
+        },
+    }
     if not all_ingest_papers:
-        print("❌ 未检索到任何相关论文，Excel 生成终止")
+        print("⚠️ 未检索到可入库论文（可能 API 限流、关键词过窄或均已存在）。已保存运行记录供排查。")
+        persist_run_outputs(
+            [],
+            profile,
+            "annual_summary",
+            total_stats,
+            candidates=all_candidates,
+        )
         return
 
-    print(f"===== 开始批量解析论文结构化内容 =====")
+    print(f"===== 正在写入文献库（共 {len(all_ingest_papers)} 篇）=====")
+    persist_run_outputs(
+        all_ingest_papers,
+        profile,
+        "annual_summary",
+        total_stats,
+        candidates=all_candidates,
+    )
+
+    if os.environ.get("TRACKER_SKIP_AI_PARSE"):
+        print(f"🎉 年度模式完成：已入库 {len(all_ingest_papers)} 篇（Web 模式已跳过批量 AI 解析，可在详情页单独生成）")
+        return
+
+    print(f"===== 开始批量解析论文结构化内容（仅新增 {sum(len(p) for p in yearly_papers.values())} 篇）=====")
     for year, papers in yearly_papers.items():
         for idx, paper in enumerate(papers, 1):
             print(f"【{year}年 | {idx}/{len(papers)}】解析：{paper['title']}")
@@ -1540,14 +2107,6 @@ def run_annual_summary_mode(start_year: int, end_year: int, max_papers_per_year:
     print("===== 正在生成年度统计 Excel 文件 =====")
     if all_parsed_papers:
         append_to_excel(all_parsed_papers)
-    total_stats = {
-        "retrieved": sum(stats.get("retrieved", 0) for stats in yearly_stats.values()),
-        "kept_after_relevance": sum(stats.get("kept_after_relevance", 0) for stats in yearly_stats.values()),
-        "new_papers": len(all_parsed_papers),
-        "abstract_completed": sum(1 for p in all_ingest_papers if p.get("abstract_is_complete")),
-        "if_matched": sum(1 for p in all_ingest_papers if p.get("impact_factor")),
-    }
-    persist_run_outputs(all_ingest_papers, profile, "annual_summary", total_stats)
     total_count = len(all_ingest_papers)
     print(f"\n🎉 年度论文统计完成！{start_year}-{end_year} 年共入库 {total_count} 篇（新解析 {len(all_parsed_papers)} 篇）")
 
@@ -2010,6 +2569,25 @@ def run_google_scholar_mode(max_results: int, serp_api_key: str, profile: Dict, 
         save_history(history)
         return
 
+    if skip_relevance_filter(profile):
+        print(f"全部入库模式：直接写入 {len(ingest_papers)} 篇谷歌学术结果")
+        persist_run_outputs(
+            ingest_papers,
+            profile,
+            "google_scholar",
+            stats,
+            candidates=build_run_candidates(
+                scholar_papers,
+                full_tier,
+                low_tier,
+                {p.get("stable_id") or p.get("id") for p in ingest_papers},
+            ),
+        )
+        touch_history_entries(history, relevant_papers, profile)
+        save_history(history)
+        print(f"🎉 谷歌学术完成：入库 {len(ingest_papers)} 篇")
+        return
+
     if not new_papers:
         print(f"✅ 无新增论文，仍将更新数据库中 {len(ingest_papers)} 篇相关论文")
         persist_run_outputs(ingest_papers, profile, "google_scholar", stats)
@@ -2066,8 +2644,11 @@ def main():
                         help="推送渠道，目前支持 serverchan")
     parser.add_argument("--test_notify", action="store_true", help="测试推送渠道")
     # 每日模式参数
-    parser.add_argument("--time_range_days", type=int, default=1, help="【daily 模式】检索过去 N 天的论文")
+    parser.add_argument("--time_range_days", type=int, default=1,
+                        help="【daily 模式】检索过去 N 天的论文；0 表示不限天数，仅取最新 max_results 篇")
     parser.add_argument("--max_results", type=int, default=10, help="最大检索论文数量")
+    parser.add_argument("--no_relevance_filter", action="store_true",
+                        help="跳过相关性筛选，检索到的文献全部入库（仅去重）")
     parser.add_argument("--auto_excel_append", type=lambda x: x.lower() == 'true', default=True,
                         help="【daily 模式】是否自动追加到 Excel")
     # 年度模式参数
@@ -2101,6 +2682,9 @@ def main():
 
     profile = get_research_profile(args.profile)
     print(f"当前研究方向：{profile['id']} - {profile.get('name', profile['id'])}")
+    if args.no_relevance_filter:
+        os.environ["TRACKER_NO_RELEVANCE_FILTER"] = "1"
+        print("入库策略：全部入库（已跳过相关性筛选）")
 
     try:
         if args.mode == "daily":
@@ -2110,7 +2694,7 @@ def main():
             start_year = args.year or args.year_from or args.start_year
             end_year = args.year or args.year_to or args.end_year
             run_annual_summary_mode(start_year, end_year, args.max_papers_per_year,
-                                    args.semantic_scholar_key, profile, args.dry_run)
+                                    args.semantic_scholar_key, profile, args.dry_run, args.serp_api_key)
         elif args.mode == "google_scholar":
             run_google_scholar_mode(args.max_results, args.serp_api_key, profile, args.dry_run, args.notify)
         elif args.mode == "high_quality":

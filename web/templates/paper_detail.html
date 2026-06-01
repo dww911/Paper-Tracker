@@ -3,168 +3,116 @@
 {% block content %}
 <section class="detail-head">
   <div>
-    <a class="back-link" href="/papers">‹ 返回列表</a>
-    <h1>{% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank" rel="noopener">{{ paper.title }}</a>{% else %}{{ paper.title }}{% endif %}</h1>
+    <a class="back-link" href="/papers">‹ 返回文献库</a>
+    <h1>{{ paper.title }}</h1>
     <p class="meta">{{ paper.authors|authors }} · {{ paper.year or "未知年份" }}</p>
     <p class="detail-meta-line">
-      原文：{% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank" rel="noopener">打开</a>{% else %}未补全{% endif %}
-      <span>PDF：{% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank" rel="noopener">打开</a>{% else %}未上传/未发现{% endif %}</span>
-      <span>DOI：{% if paper.doi_url %}<a href="{{ paper.doi_url }}" target="_blank">{{ paper.doi }}</a>{% else %}{{ paper.doi or "未补全" }}{% endif %}</span>
-      <span>摘要：{{ paper.abstract_source or "missing" }}</span>
-      <span>引用数：{{ paper.citation_count or 0 }}</span>
+      <span class="stars">{{ (paper.display_rating or paper.system_rating or 1)|stars }}</span>
+      {% if paper.recommendation_level %}<span class="badge">{{ paper.recommendation_level }}</span>{% endif %}
+      {{ paper|paper_metrics }}
     </p>
-  </div>
-  <div class="score-panel compact-score">
-    <span class="badge large">{{ paper.recommendation_level or "未评级" }}</span>
-    <strong>{{ paper.final_score or 0 }}</strong>
-    <span>综合分</span>
-    <p class="star-readout">{{ (paper.display_rating or 1)|stars }}</p>
   </div>
 </section>
 
 <div class="actions detail-actions">
-  {% if paper|paper_url %}<a class="button" href="{{ paper|paper_url }}" target="_blank">打开原文</a>{% endif %}
-  {% if paper.pdf_url %}<a class="button ghost" href="{{ paper.pdf_url }}" target="_blank">PDF</a>{% endif %}
-  {% if paper.doi_url %}<a class="button ghost" href="{{ paper.doi_url }}" target="_blank">DOI</a>{% endif %}
-  {% if paper.arxiv_url %}<a class="button ghost" href="{{ paper.arxiv_url }}" target="_blank">arXiv</a>{% endif %}
-  {% if paper.scholar_url %}<a class="button ghost" href="{{ paper.scholar_url }}" target="_blank">Scholar</a>{% endif %}
-  <form method="post" action="/papers/{{ paper.stable_id }}/read"><button type="submit">标记已读</button></form>
-  <form method="post" action="/papers/{{ paper.stable_id }}/favorite"><button type="submit">{{ "取消收藏" if paper.favorite else "收藏" }}</button></form>
-  <form method="post" action="/papers/{{ paper.stable_id }}/review-toggle"><button type="submit">{{ "移出综述资料包" if paper.included_in_review else "加入综述资料包" }}</button></form>
-  <a class="button ghost" href="/ideas/new?from_paper={{ paper.stable_id }}">保存为灵感</a>
-  <form method="post" action="/citations/add" class="inline-form">
-    <input type="hidden" name="paper_id" value="{{ paper.stable_id }}">
-    <button type="submit" class="secondary">加入引用篮</button>
-  </form>
+  {% if paper.display_url or paper|paper_url %}<a class="button" href="{{ paper.display_url or paper|paper_url }}" target="_blank" rel="noopener">打开原文</a>{% endif %}
+  {% if paper.doi_url %}<a class="button ghost" href="{{ paper.doi_url }}" target="_blank">打开 DOI</a>{% endif %}
+  {% if paper.pdf_url %}<a class="button ghost" href="{{ paper.pdf_url }}" target="_blank">打开 PDF</a>{% endif %}
   <a class="button ghost" href="/papers/{{ paper.stable_id }}/export">导出 Markdown</a>
-</div>
-
-{% if request.query_params.get('pdf_uploaded') %}
-<p class="success-text">PDF 已上传并提取文本。{% if request.query_params.get('pdf_ai') == '1' %}AI 精读笔记已更新。{% elif request.query_params.get('template') == '1' %}已生成 Markdown 笔记模板，可继续手写补充。{% endif %}</p>
-{% elif request.query_params.get('pdf_error') %}
-<p class="notice">{{ request.query_params.get('pdf_error') }}</p>
-{% endif %}
-
-<form class="flow-panel" method="post" action="/papers/{{ paper.stable_id }}/upload-pdf" enctype="multipart/form-data">
-  <h2>PDF 上传精读</h2>
-  <p class="meta">上传后会保存 PDF、抽取正文、自动补 DOI；配置 AI Key 时会基于 PDF 正文刷新精读笔记，否则生成 Markdown 模板供手写。</p>
-  <label>选择 PDF
-    <input type="file" name="file" accept=".pdf">
-  </label>
-  <button type="submit">上传并精读</button>
-</form>
-
-{% if ai_status == 'no_key' %}
-<p class="notice">未配置 KIMI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY，无法生成 AI 阅读笔记。请先在设置页配置 Kimi Key。</p>
-{% elif ai_status == 'failed' %}
-<p class="notice">AI 解析请求失败，请检查网络、API 额度或 Key 是否有效，然后点击“重新生成 AI 解析”。</p>
-{% elif request.query_params.get('generated') == '1' or ai_status == 'generated' %}
-<p class="success-text">AI 阅读笔记已更新。</p>
-{% endif %}
-
-<section class="content-band">
-  <h2>期刊质量指标</h2>
-  {% if paper.journal_matched %}
-  <dl class="journal-rank-dl">
-    <dt>期刊</dt><dd>{{ paper.journal or "—" }}</dd>
-    <dt>ISSN</dt><dd>{{ paper.issn or "—" }}</dd>
-    <dt>eISSN</dt><dd>{{ paper.eissn or "—" }}</dd>
-    <dt>JCR IF</dt><dd>{{ paper.jcr_impact_factor or paper.impact_factor or "—" }}{% if paper.jcr_year or paper.impact_factor_year %}（{{ paper.jcr_year or paper.impact_factor_year }}）{% endif %}</dd>
-    <dt>JCR 分区</dt><dd>{{ paper.jcr_quartile or "—" }}</dd>
-    <dt>中科院分区</dt><dd>{{ paper.cas_quartile or "—" }}{% if paper.cas_category %} · {{ paper.cas_category }}{% endif %}</dd>
-    <dt>中科院 TOP</dt><dd>{{ paper.cas_top or "否" }}</dd>
-    <dt>预警状态</dt><dd>{{ "是" if paper.cas_warning and paper.cas_warning|lower in ['yes','y','1','是','true','warning'] else "无" }}</dd>
-    <dt>中文核心标签</dt><dd>{{ paper.core_tags or "—" }}</dd>
-    <dt>匹配方式</dt><dd>{{ paper.journal_match_method or "—" }}</dd>
-    <dt>数据来源</dt><dd>{{ paper.journal_rank_source or "journal_metrics.csv" }}</dd>
-    <dt>期刊质量分</dt><dd>{{ paper.journal_quality_score or 0 }}</dd>
-  </dl>
-  {% else %}
-  <p class="meta">未匹配到期刊指标。请在 <a href="/settings#journal-metrics">设置 → 期刊指标库</a> 上传或补充 journal_metrics.csv，然后「重新匹配全库」。</p>
+  {% if advanced_features_enabled %}
+  <a class="button ghost" href="/idea-lab?from_paper={{ paper.stable_id }}&profile={{ paper.profile_id or current_profile_id }}">进入想法打磨</a>
   {% endif %}
-</section>
+</div>
 
 <section class="detail-main-grid">
 <div>
+<p class="meta">摘要来源：{{ paper.abstract_source or "未知" }} · 状态：{% if paper.abstract_fetch_status %}{{ paper.abstract_fetch_status }}{% elif paper.abstract_is_complete %}完整{% else %}不完整{% endif %}</p>
+
 <section class="content-band">
-  <div class="abstract-layout">
-    <article>
-      <h2>原始摘要</h2>
-      <p>{{ paper.abstract_original or "暂无摘要" }}</p>
-    </article>
-    <article>
-      <h2>中文摘要</h2>
-      <p>{{ paper.abstract_zh or "暂无中文摘要。" }}</p>
-    </article>
-  </div>
+  <h2>原始摘要</h2>
+  <p>{{ paper.abstract_original or "暂无摘要" }}</p>
 </section>
 
 <section class="content-band">
-  <div class="section-head compact">
-    <h2>AI / PDF 精读摘要</h2>
-    <form method="post" action="/papers/{{ paper.stable_id }}/generate-notes" class="inline-form"><button type="submit" class="secondary">重新生成 AI 解析</button></form>
-  </div>
+  <h2>中文摘要</h2>
+  <p>{{ paper.abstract_zh or "暂无中文摘要。" }}</p>
+</section>
+
+<section class="content-band">
+  <h2>系统阅读建议</h2>
   <div class="note-grid">
-    <article><h3>论文主题</h3><p>{{ note.paper_topic or paper.title or "待生成" }}</p></article>
+    <article><h3>论文主题</h3><p>{{ note.paper_topic or "待生成" }}</p></article>
     <article><h3>研究背景</h3><p>{{ note.research_background or "待生成" }}</p></article>
-    <article><h3>研究目的</h3><p>{{ note.research_purpose or "待生成" }}</p></article>
     <article><h3>核心方法</h3><p>{{ note.core_method or "待生成" }}</p></article>
     <article><h3>主要结果</h3><p>{{ note.main_results or "待生成" }}</p></article>
-    <article><h3>论文贡献</h3><p>{{ note.paper_contribution or "待生成" }}</p></article>
-    <article><h3>对我的启发</h3><p>{{ note.inspiration or "待生成" }}</p></article>
+    <article><h3>推荐理由</h3><p>{{ note.paper_contribution or paper.rating_reason or "待生成" }}</p></article>
     <article><h3>是否值得精读</h3><p>{{ note.worth_reading or paper.recommendation_level or "待判断" }}</p></article>
-    <article><h3>可创新点</h3><p>{{ note.possible_ideas or "待生成" }}</p></article>
   </div>
+  {% if not note.paper_topic and not note.research_background %}
+  <p class="meta">可在获取文献后自动生成，或在下方高级选项中手动触发 AI 解析。</p>
+  {% endif %}
 </section>
 
-<section class="content-band" id="my-notes">
-  <div class="section-head compact">
-    <h2>我的 Markdown 笔记</h2>
-    <a class="button ghost compact" href="/ideas/new?from_paper={{ paper.stable_id }}">从笔记形成灵感</a>
-  </div>
-  {% if my_notes_saved %}<p class="success-text">笔记已保存。</p>{% endif %}
-  <form method="post" action="/papers/{{ paper.stable_id }}/my-notes">
-    <textarea name="content" rows="18" class="notes-editor">{{ my_notes }}</textarea>
-    <div class="actions">
-      <button type="submit">保存笔记</button>
-      <button type="submit" name="use_template" value="1" class="secondary">使用默认模板</button>
-      <button type="submit" name="use_template" value="ai" class="secondary">插入 AI 阅读结果</button>
-    </div>
+<details class="advanced-options mvp-advanced">
+  <summary>高级功能（PDF 精读、个人笔记、AI 重新解析）</summary>
+  <form class="flow-panel" method="post" action="/papers/{{ paper.stable_id }}/upload-pdf" enctype="multipart/form-data">
+    <h3>PDF 上传</h3>
+    <label>选择 PDF <input type="file" name="file" accept=".pdf"></label>
+    <button type="submit">上传并解析</button>
   </form>
-  <p class="meta">保存至 my_notes/ 目录，路径记入数据库。</p>
-</section>
+  <form method="post" action="/papers/{{ paper.stable_id }}/generate-notes" class="inline-form">
+    <button type="submit" class="secondary">重新生成 AI 阅读建议</button>
+  </form>
+  <section class="content-band" id="my-notes">
+    <h3>我的 Markdown 笔记</h3>
+    <form method="post" action="/papers/{{ paper.stable_id }}/my-notes">
+      <textarea name="content" rows="12" class="notes-editor">{{ my_notes }}</textarea>
+      <button type="submit">保存笔记</button>
+    </form>
+  </section>
+</details>
 </div>
 
 <aside class="side detail-side">
+  <section class="content-band">
+    <h2>期刊质量指标</h2>
+    {% if paper.journal_matched %}
+    <dl class="journal-rank-dl">
+      <dt>期刊</dt><dd>{{ paper.journal or paper.journal_name or "—" }}</dd>
+      <dt>ISSN</dt><dd>{{ paper.issn or "—" }}</dd>
+      <dt>eISSN</dt><dd>{{ paper.eissn or "—" }}</dd>
+      <dt>JCR IF</dt><dd>{{ paper.jcr_impact_factor or paper.impact_factor or "—" }}{% if paper.jcr_year %}（{{ paper.jcr_year }}）{% endif %}</dd>
+      <dt>JCR 分区</dt><dd>{{ paper.jcr_quartile or "—" }}</dd>
+      <dt>中科院分区</dt><dd>{{ paper.cas_quartile or "—" }}</dd>
+      <dt>中科院 TOP</dt><dd>{{ paper.cas_top or "—" }}</dd>
+      <dt>预警状态</dt><dd>{% if paper.cas_warning and paper.cas_warning|lower in ['yes','y','1','是','warning','true'] %}预警{% else %}无{% endif %}</dd>
+      <dt>核心标签</dt><dd>{{ paper.core_tags or "—" }}</dd>
+      <dt>CCF</dt><dd>{{ paper.ccf_rank or "—" }}</dd>
+      <dt>匹配方式</dt><dd>{{ paper.journal_match_method or "—" }}</dd>
+      <dt>数据来源</dt><dd>{{ paper.journal_rank_source or "journal_metrics.csv" }}</dd>
+      <dt>期刊质量分</dt><dd>{{ paper.journal_quality_score or 0 }}</dd>
+    </dl>
+    {% else %}
+    <p class="meta">未匹配到本地期刊指标库。请前往 <a href="/settings#journal-metrics">设置 → 期刊指标库</a> 上传 <code>journal_metrics.csv</code> 后点「重新匹配全库」。</p>
+    {% endif %}
+  </section>
+
   <h2>基本信息</h2>
   <dl>
+    <dt>研究方向</dt><dd>{{ paper.profile_id or "—" }}</dd>
     <dt>发表年份</dt><dd>{{ paper.year or "未知" }}</dd>
+    <dt>DOI</dt><dd>{% if paper.doi_url %}<a href="{{ paper.doi_url }}" target="_blank">{{ paper.doi }}</a>{% else %}{{ paper.doi or "未补全" }}{% endif %}</dd>
+    <dt>引用数</dt><dd>{{ paper.citation_count or 0 }}</dd>
     <dt>系统星级</dt><dd>{{ (paper.computed_system_rating or paper.system_rating or 1)|stars }}</dd>
-    <dt>我的星级</dt>
-    <dd>
-      <form method="post" action="/papers/{{ paper.stable_id }}/rating" class="tiny-form">
-        <select name="rating" onchange="this.form.submit()">
-          {% for star in [5,4,3,2,1] %}
-          <option value="{{ star }}" {% if (paper.display_rating or 1)|string == star|string %}selected{% endif %}>{{ star|stars }}</option>
-          {% endfor %}
-        </select>
-      </form>
-    </dd>
-    <dt>阅读状态</dt>
-    <dd>
-      <form method="post" action="/papers/{{ paper.stable_id }}/status" class="tiny-form">
-        <select name="reading_status" onchange="this.form.submit()">
-          {% for value, label in [("unread","未读"),("todo","待读"),("reading","精读中"),("read","已读"),("ignored","忽略")] %}
-          <option value="{{ value }}" {% if paper.reading_status == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </form>
-    </dd>
-    <dt>期刊</dt><dd>{{ paper.journal or "未知" }}</dd>
-    <dt>影响因子</dt><dd>{{ paper.impact_factor or "未匹配" }}</dd>
-    <dt>推荐等级</dt><dd>{{ paper.recommendation_level or "未评级" }}</dd>
-    <dt>相关性评分</dt><dd>{{ paper.relevance_score or 0 }}</dd>
   </dl>
+  <h3>链接</h3>
+  <ul class="link-list">
+    {% if paper.display_url %}<li><a href="{{ paper.display_url }}" target="_blank">display_url</a></li>{% endif %}
+    {% if paper.arxiv_url %}<li><a href="{{ paper.arxiv_url }}" target="_blank">arXiv</a></li>{% endif %}
+    {% if paper.scholar_url %}<li><a href="{{ paper.scholar_url }}" target="_blank">Google Scholar</a></li>{% endif %}
+    {% if paper.publisher_url %}<li><a href="{{ paper.publisher_url }}" target="_blank">出版社</a></li>{% endif %}
+    {% if paper.source_url %}<li><a href="{{ paper.source_url }}" target="_blank">来源页</a></li>{% endif %}
+  </ul>
 </aside>
 </section>
 {% endblock %}

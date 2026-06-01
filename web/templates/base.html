@@ -4,55 +4,74 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Research Radar{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20260601-nav">
 </head>
-<body>
-  <aside class="sidebar">
+<body class="{% block body_class %}{% endblock %}" id="app-body">
+  <aside class="sidebar" id="sidebar">
     <a class="brand" href="/">
-      <span class="brand-mark">RR</span>
-      <span>Research Radar</span>
+      <span class="brand-icon-wrap" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="14" cy="14" r="10" stroke="#fff" stroke-width="1.8"/>
+          <circle cx="14" cy="14" r="3.5" fill="#fff"/>
+          <path d="M14 4v3M14 21v3M4 14h3M21 14h3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="brand-text">Research Radar</span>
     </a>
     <nav class="side-nav">
       {% set path = request.url.path %}
-      <a class="{{ 'active' if path == '/' or path.startswith('/fetch') or path.startswith('/runs') or path.startswith('/daily') or path.startswith('/wechat') else '' }}" href="/"><span>⌂</span>今日工作台</a>
-      <a class="{{ 'active' if path.startswith('/library') or path.startswith('/papers') or path.startswith('/annual') or path.startswith('/archive') else '' }}" href="/library"><span>▦</span>文献库</a>
-      <a class="{{ 'active' if path.startswith('/reading') else '' }}" href="/reading"><span>◉</span>精读笔记</a>
-      <a class="{{ 'active' if path.startswith('/ideas') else '' }}" href="/ideas"><span>✎</span>灵感</a>
-      <a class="{{ 'active' if path.startswith('/progress') or path.startswith('/writing') or path.startswith('/generate') or path.startswith('/weekly') or path.startswith('/citations') or path.startswith('/roadmap') else '' }}" href="/progress"><span>✦</span>进展与写作</a>
+      <a class="side-link {{ 'active' if path == '/' or path.startswith('/runs') else '' }}" href="/">
+        <span class="nav-icon">{% include 'icons/nav-home.svg' %}</span><span class="nav-label">首页</span>
+      </a>
+      <a class="side-link {{ 'active' if path.startswith('/fetch') else '' }}" href="/fetch">
+        <span class="nav-icon">{% include 'icons/nav-fetch.svg' %}</span><span class="nav-label">获取文献</span>
+      </a>
+      <a class="side-link {{ 'active' if path.startswith('/papers') or path.startswith('/annual') else '' }}" href="/papers">
+        <span class="nav-icon">{% include 'icons/nav-library.svg' %}</span><span class="nav-label">文献库</span>
+      </a>
+      <a class="side-link {{ 'active' if path.startswith('/roadmap') else '' }}" href="/roadmap">
+        <span class="nav-icon">{% include 'icons/nav-roadmap.svg' %}</span><span class="nav-label">发展路径</span>
+      </a>
+      <a class="side-link {{ 'active' if path.startswith('/reports') or path.startswith('/generate') or path.startswith('/archive') else '' }}" href="/reports">
+        <span class="nav-icon">{% include 'icons/nav-reports.svg' %}</span><span class="nav-label">报告导出</span>
+      </a>
+      <a class="side-link {{ 'active' if path.startswith('/settings') or path.startswith('/profiles') else '' }}" href="/settings">
+        <span class="nav-icon">{% include 'icons/nav-settings.svg' %}</span><span class="nav-label">设置</span>
+      </a>
+      {% if advanced_features_enabled %}
+      <a class="side-link {{ 'active' if path.startswith('/ask') else '' }}" href="/ask">问文献库</a>
+      <a class="side-link {{ 'active' if path.startswith('/agents') else '' }}" href="/agents">Agent</a>
+      <a class="side-link {{ 'active' if path.startswith('/idea-lab') or path.startswith('/ideas') else '' }}" href="/idea-lab">想法打磨</a>
+      {% endif %}
     </nav>
-    <div class="profile-chip">
-      <span>当前研究方向</span>
-      <strong>{{ current_profile.display_name if current_profile is defined and current_profile else current_profile_id if current_profile_id is defined else "未选择" }}</strong>
-      <a href="/settings#profiles">切换方向</a>
+    {% if current_profile_id %}
+    <div class="sidebar-profile">
+      <span class="sidebar-profile-label">当前方向</span>
+      <strong class="sidebar-profile-name">{{ current_profile.display_name or current_profile.name or current_profile_id }}</strong>
+      <a class="sidebar-profile-link" href="/profiles">切换</a>
     </div>
-    <nav class="side-nav side-nav-secondary">
-      <a class="{{ 'active' if path.startswith('/settings') or path.startswith('/profiles') else '' }}" href="/settings"><span>⚙</span>设置</a>
-    </nav>
+    {% endif %}
+    <button type="button" class="sidebar-collapse" id="sidebar-collapse" title="收起侧边栏" aria-label="收起侧边栏">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
   </aside>
   <div class="app-frame">
-    <header class="topbar">
-      <div class="topbar-status">
-        <span>最近更新：{{ latest.run_time if latest is defined and latest else "暂无" }}</span>
-        <span>运行模式：{{ latest.mode if latest is defined and latest else "等待运行" }}</span>
-        <span>状态：{{ "已完成" if latest is defined and latest else "等待首次运行" }}</span>
-      </div>
-      <div class="topbar-actions">
-        <form class="quick-run" method="post" action="/run">
-          <input type="hidden" name="profile" value="{{ current_profile_id if current_profile_id is defined else '' }}">
-          <select name="mode" title="运行模式">
-            <option value="daily" selected>daily</option>
-            <option value="high_quality">high_quality</option>
-          </select>
-          <input type="hidden" name="max_results" value="30">
-          <input type="hidden" name="time_range_days" value="7">
-          <button type="submit">立即运行</button>
-        </form>
-        <a class="button ghost compact" href="/fetch">获取更多</a>
-      </div>
-    </header>
+    {% block topbar %}{% endblock %}
     <main class="shell">
       {% block content %}{% endblock %}
     </main>
   </div>
+  <script>
+  (function () {
+    var btn = document.getElementById('sidebar-collapse');
+    var body = document.getElementById('app-body');
+    if (btn && body) {
+      btn.addEventListener('click', function () {
+        body.classList.toggle('sidebar-collapsed');
+      });
+    }
+  })();
+  </script>
 </body>
 </html>

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}想法打磨室{% endblock %}
+{% block body_class %}page-idea-lab{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Idea Lab</p>
+    <h1>想法打磨室</h1>
+    <p class="subtitle">基于当前文献库和公开学术信息，帮你把一个粗略想法打磨成可研究的问题。</p>
+  </div>
+  <div class="hero-actions">
+    <a class="dash-btn dash-btn-outline" href="/roadmap?profile={{ selected_profile }}{% if branch_key %}&view=branches&node={{ branch_key }}{% endif %}">返回方向路径</a>
+  </div>
+</section>
+
+<section class="idea-lab-context dash-card">
+  <dl class="idea-lab-context-dl">
+    <div><dt>当前方向</dt><dd>{{ selected_profile_name }}</dd></div>
+    <div><dt>当前分支</dt><dd>{{ branch_info.title or "全方向" }}</dd></div>
+    <div><dt>可用文献</dt><dd>{% if branch_key %}{{ branch_paper_count }}{% else %}{{ local_paper_count }}{% endif %} 篇</dd></div>
+    <div><dt>数据范围</dt><dd>本地文献库 + OpenAlex / Crossref / arXiv / Semantic Scholar</dd></div>
+  </dl>
+</section>
+
+{% if request.query_params.get('saved') %}
+<p class="success-text">想法已保存{% if request.query_params.get('id') %}（#{{ request.query_params.get('id') }}）{% endif %}。</p>
+{% endif %}
+{% if request.query_params.get('generated') %}
+<p class="success-text">已更新研究方案。</p>
+{% endif %}
+
+<div class="idea-lab-layout">
+  <div class="idea-lab-main">
+    <form class="flow-panel" method="post" action="/idea-lab/polish">
+      <input type="hidden" name="profile" value="{{ selected_profile }}">
+      <input type="hidden" name="branch" value="{{ branch_key or '' }}">
+      <label>输入你的初步想法
+        <textarea name="raw_idea" rows="5" placeholder="例如：我想把 WDD 作为 ePIE 的初始化方法，用于低剂量 4D-STEM 重建，这个想法有没有价值？">{{ raw_idea or "" }}</textarea>
+      </label>
+      <fieldset class="idea-lab-scope">
+        <legend>分析范围</legend>
+        <label class="radio-chip"><input type="checkbox" name="scope_branch" value="on" {% if branch_key %}checked{% endif %}> 当前分支论文</label>
+        <label class="radio-chip"><input type="checkbox" name="scope_profile" value="on" checked> 当前方向全部论文</label>
+        <label class="radio-chip"><input type="checkbox" name="scope_external" value="on" checked> 公开学术源补充</label>
+        <label class="radio-chip disabled" title="第一版不支持普通网页搜索"><input type="checkbox" disabled> 普通网页搜索</label>
+      </fieldset>
+      <button type="submit" class="dash-btn dash-btn-primary">开始打磨想法</button>
+    </form>
+
+    {% if result.get('sections') %}
+    <section class="idea-lab-output dash-card">
+      <h2>结构化分析</h2>
+      {% for key, text in result.get('sections', {}).items() %}
+      {% if text %}
+      <article class="analysis-section">
+        <h3>{{ key }}</h3>
+        <div class="markdown-preview"><pre>{{ text }}</pre></div>
+      </article>
+      {% endif %}
+      {% endfor %}
+      {% if result.get('raw_markdown') and not result.get('sections') %}
+      <pre class="markdown-preview">{{ result.raw_markdown }}</pre>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="idea-lab-footer dash-card">
+      <h2>下一步操作</h2>
+      <form method="post" action="/idea-lab/save" class="flow-panel">
+        <input type="hidden" name="profile_id" value="{{ selected_profile }}">
+        <input type="hidden" name="branch" value="{{ branch_key or '' }}">
+        <input type="hidden" name="title" value="{{ (raw_idea or '')[:120] }}">
+        <input type="hidden" name="body_md" value="{{ result.get('raw_markdown') or raw_idea or '' }}">
+        <input type="hidden" name="next_tasks" value="{{ (result.get('fetch_keywords') or [])|join(', ') }}">
+        <div class="hero-actions">
+          <button type="submit" class="dash-btn dash-btn-outline">保存为想法草稿</button>
+        </div>
+      </form>
+      <form method="post" action="/idea-lab/fetch-task" class="inline-form">
+        <input type="hidden" name="profile" value="{{ selected_profile }}">
+        <input type="hidden" name="branch" value="{{ branch_key or '' }}">
+        <input type="hidden" name="keywords" value="{{ (result.get('fetch_keywords') or [])|join(', ') }}">
+        <input type="hidden" name="raw_idea" value="{{ raw_idea or '' }}">
+        <button type="submit" class="dash-btn dash-btn-primary">生成补充检索任务</button>
+      </form>
+      <a class="dash-btn dash-btn-outline" href="/fetch?from=idea-lab&prefill_keywords={{ (result.get('fetch_keywords') or [])|join(',')|urlencode }}">去获取更多文献</a>
+    </section>
+  </div>
+
+  <aside class="idea-lab-evidence dash-card">
+    <h2>证据来源</h2>
+    {% if evidence %}
+    <p class="meta">相关 {{ (evidence.supporting|length) + (evidence.external|length) }} 条 · 高相关 {{ evidence.supporting|length }} · 公开源 {{ evidence.external|length }}</p>
+    {% if evidence.supporting %}
+    <h3>支持这个想法的论文</h3>
+    <ul class="evidence-list">
+      {% for hit in evidence.supporting %}
+      <li class="evidence-card">
+        <strong>{{ hit.title }}</strong>
+        <span class="meta">{{ hit.year or "n.d." }} · {{ hit.journal or hit.source_type }} {% if hit.display_rating %}· {{ hit.display_rating|stars }}{% endif %}</span>
+        <p class="meta">{{ hit.relevance_reason }}</p>
+        <div class="card-actions">
+          {% if hit.stable_id %}<a href="/papers/{{ hit.stable_id }}">查看详情</a>{% endif %}
+          {% if hit.url %}<a href="{{ hit.url }}" target="_blank" rel="noopener">打开原文</a>{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if evidence.duplicate_risk %}
+    <h3>可能已有类似工作</h3>
+    <ul class="evidence-list">
+      {% for hit in evidence.duplicate_risk %}
+      <li class="evidence-card">
+        <strong>{{ hit.title }}</strong>
+        <span class="meta">{{ hit.year or "n.d." }} · {{ hit.source_type }}</span>
+        {% if hit.url %}<a href="{{ hit.url }}" target="_blank">打开</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if evidence.external %}
+    <h3>公开学术源补充</h3>
+    <ul class="evidence-list">
+      {% for hit in evidence.external %}
+      <li class="evidence-card">
+        <strong>{{ hit.title }}</strong>
+        <span class="meta">{{ hit.year or "n.d." }} · {{ hit.source_type }}</span>
+        {% if hit.url %}<a href="{{ hit.url }}" target="_blank">打开</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if evidence.gaps %}
+    <h3>需要补充检索</h3>
+    <ul class="simple-list">
+      {% for gap in evidence.gaps %}
+      <li>{{ gap }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% else %}
+    <p class="meta">提交想法后将在此显示文献证据与公开学术源结果。</p>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

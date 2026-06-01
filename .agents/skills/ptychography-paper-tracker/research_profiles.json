@@ -2,8 +2,8 @@
   "default_profile": "electron_ptychography",
   "profiles": {
     "electron_ptychography": {
-      "name": "电子显微 Ptychography / 4D-STEM",
-      "display_name": "Electron Ptychography / 4D-STEM",
+      "name": "电子显微 Ptychography",
+      "display_name": "Electron Ptychography",
       "description": "面向电子显微、4D-STEM、电子ptychography、相位恢复和WDD相关研究的默认方向。",
       "include_keywords": [
         "electron ptychography",
@@ -51,7 +51,7 @@
       "default_sources": {
         "arxiv": true,
         "semantic_scholar": true,
-        "google_scholar": false
+        "google_scholar": true
       },
       "score_rules": {
         "title_keyword": 3,
@@ -61,9 +61,9 @@
         "must_have_bonus": 2,
         "min_score": 3
       },
-      "score_threshold": 5,
+      "score_threshold": 3,
       "ingest_min_score": 1,
-      "ingest_below_must_have": true,
+      "ingest_below_must_have": false,
       "parse_template": "electron_ptychography",
       "parse_focus": [
         "说明论文与电子显微、4D-STEM或电子ptychography的直接关系。",
@@ -83,7 +83,9 @@
         "总结",
         "未来展望",
         "可创新点"
-      ]
+      ],
+      "google_scholar_query": "",
+      "enable_wechat": false
     },
     "xray_ptychography": {
       "name": "X-ray Ptychography / CDI",
@@ -236,6 +238,60 @@
         "未来展望",
         "可创新点"
       ]
+    },
+    "mesh": {
+      "name": "mesh",
+      "display_name": "mesh",
+      "description": "",
+      "include_keywords": [],
+      "must_have_any": [],
+      "exclude_keywords": [],
+      "research_focus": [],
+      "google_scholar_query": "",
+      "arxiv_categories": [
+        "physics.app-ph",
+        "cond-mat.mtrl-sci"
+      ],
+      "enable_wechat": true,
+      "sources": [
+        "arxiv",
+        "semantic_scholar",
+        "google_scholar"
+      ],
+      "default_sources": {
+        "arxiv": true,
+        "semantic_scholar": true,
+        "google_scholar": true
+      },
+      "score_rules": {
+        "title_keyword": 3,
+        "abstract_keyword": 1,
+        "research_focus": 2,
+        "exclude_keyword": -5,
+        "must_have_bonus": 2,
+        "min_score": 3
+      },
+      "score_threshold": 3,
+      "parse_template": "custom_research",
+      "parse_focus": [
+        "结合当前研究方向给出具体、可落地的研究启发。"
+      ],
+      "output_fields": [
+        "论文名字",
+        "网址",
+        "期刊",
+        "影响因子",
+        "发布时间",
+        "摘要中文翻译",
+        "研究背景",
+        "论文创新点",
+        "实验结果",
+        "总结",
+        "未来展望",
+        "可创新点"
+      ],
+      "ingest_min_score": 1,
+      "ingest_below_must_have": false
     }
   }
 }

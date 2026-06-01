@@ -9,6 +9,18 @@
 </section>
 
 <section class="content-band">
+  <h2>高级功能</h2>
+  <p class="meta">默认关闭。开启后显示「问文献库 / Agent / 想法打磨室」等入口。<strong>研究方向发展路径</strong>在左侧导航「发展路径」中，无需开启。</p>
+  <form method="post" action="/settings/advanced-features" class="inline-form">
+    <label class="radio-chip">
+      <input type="checkbox" name="advanced_features_enabled" value="on" {% if app_settings.advanced_features_enabled %}checked{% endif %}>
+      启用高级功能
+    </label>
+    <button type="submit">保存</button>
+  </form>
+</section>
+
+<section class="content-band">
   <h2>系统健康检查</h2>
   <ul class="doctor-list">
     {% for check in doctor_checks %}
@@ -89,7 +101,12 @@
 </section>
 
 <section class="content-band" id="journal-metrics">
-  <h2>期刊指标库</h2>
+  <h2>期刊等级增强 Journal Rank Enhancer</h2>
+  <p class="meta">
+    类似 easyScholar 的期刊质量展示，但<strong>不内置商业数据库、不爬取 easyScholar/LetPub</strong>。
+    指标全部来自您上传的 <code>journal_metrics.csv</code>（JCR IF、分区、中科院 TOP、预警、核心标签等）。
+    上传后建议点击「重新匹配全库」，新入库论文会自动匹配。
+  </p>
   {% if request.query_params.get('journal_rematched') %}
   <p class="notice">已重新匹配全库期刊指标与综合分。</p>
   {% elif request.query_params.get('journal_uploaded') %}

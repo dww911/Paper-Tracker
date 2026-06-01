@@ -4,34 +4,71 @@
 <section class="page-head">
   <div>
     <p class="eyebrow">Profiles</p>
-    <h1>{% if is_new %}新建研究方向{% else %}研究方向配置{% endif %}</h1>
-    <p class="subtitle">可新建、编辑、删除自定义方向；ID 仅支持英文、数字和下划线。</p>
+    <h1>{% if is_new %}新建研究方向{% else %}切换 / 管理研究方向{% endif %}</h1>
+    <p class="subtitle">全站只有一个「当前方向」（保存在 research_profiles.json）。左侧点击其他方向会立即切换，首页、文献库、运行结果等数据都会换成该方向。</p>
   </div>
   {% if not is_new %}
   <a class="button" href="/profiles/new">+ 新建研究方向</a>
   {% endif %}
 </section>
 
+{% if request.query_params.get('saved') == '1' %}
+<p class="notice success-text">研究方向配置已保存。</p>
+{% endif %}
+
 {% if request.query_params.get('error') == 'exists' %}
 <p class="notice">该研究方向 ID 已存在，请换一个名称。</p>
 {% elif request.query_params.get('error') == 'default' %}
-<p class="notice">默认方向不能删除，请先指定其他方向为默认。</p>
+<p class="notice">当前使用中的方向不能删除，请先切换到其他方向。</p>
 {% elif request.query_params.get('error') == 'last' %}
 <p class="notice">至少保留一个研究方向。</p>
 {% endif %}
 
 <section class="profile-layout">
   <aside class="profile-list">
+    <p class="profile-list-hint">当前方向：<strong>{{ profiles[default_profile].display_name or profiles[default_profile].name or default_profile if default_profile else '未设置' }}</strong></p>
     {% for pid, item in profiles.items() %}
-    <a class="profile-list-item {% if pid == selected and not is_new %}active{% endif %}" href="/profiles?selected={{ pid }}">
-      <strong>{{ item.display_name or item.name or pid }}</strong>
-      <small>{{ pid }}{% if pid == default_profile %} · 默认{% endif %}</small>
-    </a>
+    <div class="profile-list-item-wrap {% if pid == selected and not is_new %}active-wrap{% endif %}">
+      {% if pid == default_profile %}
+      <a class="profile-list-item active" href="/profiles">
+        <strong>{{ item.display_name or item.name or pid }}</strong>
+        <small>{{ pid }} · 当前使用中</small>
+      </a>
+      {% else %}
+      <a class="profile-list-item" href="/profiles?selected={{ pid }}">
+        <strong>{{ item.display_name or item.name or pid }}</strong>
+        <small>{{ pid }} · 点击切换</small>
+      </a>
+      {% if profiles|length > 1 %}
+      <form method="post" action="/profiles/delete" class="profile-delete-inline" onsubmit="return confirm('确定删除该研究方向？');">
+        <input type="hidden" name="profile_id" value="{{ pid }}">
+        <button type="submit" class="profile-delete-link">删除</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
     {% endfor %}
     <a class="profile-list-item new-item {% if is_new %}active{% endif %}" href="/profiles/new">+ 新建研究方向</a>
   </aside>
 
   <form class="profile-form" method="post" action="{% if is_new %}/profiles/create{% else %}/profiles{% endif %}">
+    <div class="profile-form-toolbar full-width">
+      <div class="profile-form-toolbar-text">
+        {% if is_new %}
+        <strong>新建研究方向</strong>
+        {% else %}
+        <strong>编辑当前方向：{{ profile.display_name or profile.name or selected }}</strong>
+        <span class="meta">保存后全站继续使用此方向</span>
+        {% endif %}
+      </div>
+      <div class="profile-form-actions">
+        <button type="submit" class="dash-btn dash-btn-primary">{% if is_new %}创建研究方向{% else %}保存配置{% endif %}</button>
+        {% if not is_new %}
+        <a class="dash-btn dash-btn-outline" href="/profiles">重置</a>
+        {% endif %}
+      </div>
+    </div>
+
     <label>研究方向 ID
       <span class="field-hint">例如 my_ptychography，保存后不建议修改</span>
       <input name="profile_id" value="{{ selected if not is_new else '' }}" {% if not is_new %}readonly{% endif %} required placeholder="my_research_topic">
@@ -57,22 +94,14 @@
       <label class="check"><input type="checkbox" name="use_semantic" {% if is_new or source_flags.get('semantic_scholar', true) or 'semantic_scholar' in source_list %}checked{% endif %}> Semantic Scholar</label>
       <label class="check"><input type="checkbox" name="use_google" {% if source_flags.get('google_scholar') or 'google_scholar' in source_list %}checked{% endif %}> Google Scholar</label>
       <label class="check"><input type="checkbox" name="enable_wechat" {% if profile.enable_wechat %}checked{% endif %}> 启用微信推送</label>
-      <label class="check"><input type="checkbox" name="set_as_default" {% if is_new or selected == default_profile %}checked{% endif %}> 设为默认方向</label>
     </div>
 
-    <div class="profile-form-actions full-width">
-      <button type="submit">{% if is_new %}创建研究方向{% else %}保存研究方向{% endif %}</button>
+    <div class="profile-form-actions full-width profile-form-footer">
+      <button type="submit" class="dash-btn dash-btn-primary">{% if is_new %}创建研究方向{% else %}保存配置{% endif %}</button>
       {% if not is_new %}
-      <a class="button ghost" href="/profiles?selected={{ selected }}">重置</a>
+      <a class="dash-btn dash-btn-outline" href="/profiles">重置</a>
       {% endif %}
     </div>
   </form>
-
-  {% if not is_new and can_delete %}
-  <form method="post" action="/profiles/delete" class="profile-delete-form" onsubmit="return confirm('确定删除该研究方向？');">
-    <input type="hidden" name="profile_id" value="{{ selected }}">
-    <button type="submit" class="secondary">删除当前方向</button>
-  </form>
-  {% endif %}
 </section>
 {% endblock %}

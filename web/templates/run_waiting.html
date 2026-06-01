@@ -5,10 +5,10 @@
   <div>
     <p class="eyebrow">Running</p>
     <h1>文献检索运行中…</h1>
-    <p class="subtitle">后台正在执行 tracker（拉取 arXiv 并补元数据约需 1–3 分钟）。完成后将自动跳转。</p>
+    <p class="subtitle">后台正在执行 tracker。最新文献通常 1–3 分钟；指定年份/年度检索可能更久，完成后将自动跳转。</p>
   </div>
   <div class="hero-actions">
-    <a class="button ghost" href="/runs/latest">查看最近运行</a>
+    <a class="button ghost" href="/runs/latest">查看本方向最近运行</a>
     <a class="button ghost" href="/papers">文献库</a>
   </div>
 </section>
@@ -16,7 +16,7 @@
 <section class="content-band">
   <p id="wait-status" class="meta">正在检测运行状态…（第 <span id="try-count">{{ tries }}</span> 次）</p>
   <pre id="log-tail" class="log-preview">{{ log_tail }}</pre>
-  <p class="meta">若超过 3 分钟仍无跳转，说明任务可能已结束但未写入新记录，请点击上方「查看最近运行」。</p>
+  <p class="meta">若年度检索长时间未跳转，请先看日志尾部；任务可能仍在 Semantic Scholar 检索，或网络/API 暂时失败。</p>
 </section>
 
 <script>
@@ -35,14 +35,14 @@
         document.getElementById("log-tail").textContent = data.log_tail;
       }
       if (data.done) {
-        const target = data.run_id ? `/runs/${data.run_id}?from_waiting=1` : "/papers?run_finished=1";
+        const target = data.run_id ? `/runs/${data.run_id}?from_waiting=1` : "/fetch?run_finished_no_db=1";
         window.location.replace(target);
         return;
       }
       document.getElementById("wait-status").textContent =
         data.finished_marker
           ? "检测到任务已结束，正在跳转…"
-          : `运行中…（约 ${Math.min(tries * 2, 180)} 秒，拉取 30 篇元数据较慢属正常）`;
+          : `运行中…（约 ${Math.min(tries * 2, 600)} 秒，年度检索较慢属正常）`;
     } catch (e) {
       document.getElementById("wait-status").textContent = "状态检测失败，2 秒后重试…";
     }

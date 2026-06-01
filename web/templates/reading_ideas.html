@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}精读与灵感{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Reading & Ideas</p>
+    <h1>精读与灵感</h1>
+    <p class="subtitle">把待读论文、精读笔记和可跟进灵感放在同一个工作区里推进。</p>
+  </div>
+  <div class="hero-actions">
+    <a class="button" href="/papers?status=todo">待读论文</a>
+    <a class="button ghost" href="/reading">精读看板</a>
+    <a class="button ghost" href="/ideas">灵感库</a>
+    <a class="button ghost" href="/ideas/new">新建灵感</a>
+  </div>
+</section>
+
+<section class="metrics">
+  <div><small>待读</small><strong>{{ buckets['待读']|length }}</strong><em>篇</em></div>
+  <div><small>精读中</small><strong>{{ buckets['精读中']|length }}</strong><em>篇</em></div>
+  <div><small>已读</small><strong>{{ buckets['已读']|length }}</strong><em>篇</em></div>
+  <div><small>灵感</small><strong>{{ ideas|length }}</strong><em>条</em></div>
+</section>
+
+<section class="two-col-flow wide-preview">
+  <section class="flow-panel">
+    <div class="section-head compact">
+      <h2>精读推进</h2>
+      <a class="button ghost compact" href="/reading">查看完整看板</a>
+    </div>
+    <div class="kanban">
+      {% for name, papers in buckets.items() %}
+      <div class="kanban-col">
+        <h2>{{ name }} <span>{{ papers|length }}</span></h2>
+        {% for paper in papers[:4] %}
+        <article class="queue-card">
+          <span class="badge level-{{ (paper.recommendation_level or 'C')[0] }}">{{ paper.recommendation_level or "未评级" }}</span>
+          <h3>{{ paper.title }}</h3>
+          <p class="meta">{{ paper.journal or "未知期刊" }} ｜ {{ paper.final_score or 0 }}/30</p>
+          <div class="card-actions">
+            <a href="/papers/{{ paper.stable_id }}">详情</a>
+            <a href="/papers/{{ paper.stable_id }}#my-notes">写笔记</a>
+            <a href="/ideas/new?from_paper={{ paper.stable_id }}">形成灵感</a>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="flow-panel">
+    <div class="section-head compact">
+      <h2>灵感沉淀</h2>
+      <a class="button ghost compact" href="/ideas">查看全部</a>
+    </div>
+    {% if not ideas %}
+    <section class="empty inline-empty">
+      <h2>暂无灵感</h2>
+      <p>从论文详情或精读卡片点击“形成灵感”，会自动带入论文和 AI 精读结果。</p>
+    </section>
+    {% else %}
+    <section class="idea-list">
+      {% for idea in ideas %}
+      <article class="idea-card">
+        <div>
+          <a href="/ideas/{{ idea.id }}"><strong>{{ idea.title }}</strong></a>
+          <p>{{ idea.possible_direction or idea.body_md or "暂无摘要" }}</p>
+          <p><a href="/ideas/{{ idea.id }}?support=1">找支持文献</a></p>
+        </div>
+        <dl>
+          <dt>状态</dt><dd>{{ idea.status }}</dd>
+          <dt>关联论文</dt><dd>{{ "已关联" if idea.linked_paper_ids_json else "未关联" }}</dd>
+        </dl>
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

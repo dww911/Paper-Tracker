@@ -7,7 +7,16 @@
     <h1>{{ '新建灵感' if is_new else idea.title }}</h1>
     <p class="subtitle">记录来源论文、可跟进方向和下一步实验/写作动作。</p>
   </div>
+  {% if not is_new %}
+  <div class="hero-actions">
+    <a class="button ghost" href="/ideas/{{ idea.id }}?support=1">找支持文献</a>
+    <form method="post" action="/ideas/{{ idea.id }}/generate-plan" class="inline-form"><button type="submit">生成研究方案</button></form>
+  </div>
+  {% endif %}
 </section>
+{% if request.query_params.get('generated') %}
+<p class="success-text">已基于 RAG 支持文献更新研究方案。</p>
+{% endif %}
 {% if request.query_params.get('error') == 'save_failed' %}
 <p class="notice">保存失败，请重试。{{ request.query_params.get('detail', '') }}</p>
 {% endif %}
@@ -36,4 +45,23 @@
   </label>
   <button type="submit">保存</button>
 </form>
+{% if support_chunks %}
+<section class="content-band">
+  <h2>支持文献</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>类型</th><th>标题</th><th>依据片段</th></tr></thead>
+      <tbody>
+        {% for chunk in support_chunks %}
+        <tr>
+          <td>{{ chunk.source_type }}</td>
+          <td>{% if chunk.source_url %}<a href="{{ chunk.source_url }}" target="_blank" rel="noopener">{{ chunk.title }}</a>{% else %}{{ chunk.title }}{% endif %}</td>
+          <td>{{ chunk.chunk_text[:220] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

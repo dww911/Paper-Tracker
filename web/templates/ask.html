@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}问文献库{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">RAG</p>
+    <h1>{{ scope_label or "问文献库" }}</h1>
+    <p class="subtitle">{% if paper %}基于单篇论文、PDF 和笔记回答。{% else %}基于论文库、AI 笔记、Markdown 笔记、灵感和报告回答。{% endif %}</p>
+  </div>
+  <form method="post" action="/rag/reindex" class="inline-form">
+    <input type="hidden" name="profile" value="{{ selected_profile or current_profile_id }}">
+    <button type="submit" class="secondary">重建 RAG 索引</button>
+  </form>
+</section>
+
+{% if request.query_params.get('indexed') %}
+<p class="success-text">已更新索引：{{ request.query_params.get('indexed') }} 个片段，{{ request.query_params.get('docs') }} 个来源。</p>
+{% endif %}
+
+<section class="settings-grid">
+  <form class="flow-panel" method="post" action="{% if paper %}/papers/{{ paper.stable_id }}/ask{% else %}/ask{% endif %}">
+    {% if not paper %}
+    <label>研究方向
+      <select name="profile">
+        {% for item in profiles %}
+        <option value="{{ item.profile_id }}" {% if selected_profile == item.profile_id %}selected{% endif %}>{{ item.display_name or item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>问题
+      <textarea name="question" rows="4" placeholder="例如：WDD 和 ePIE 结合有哪些可能创新点？">{{ question or "" }}</textarea>
+    </label>
+    <button type="submit">基于来源回答</button>
+  </form>
+  <section class="content-band">
+    <h2>索引状态</h2>
+    <dl>
+      <dt>文档</dt><dd>{{ rag_status.documents }}</dd>
+      <dt>片段</dt><dd>{{ rag_status.chunks }}</dd>
+      <dt>问答记录</dt><dd>{{ rag_status.queries }}</dd>
+      <dt>最近索引</dt><dd>{{ rag_status.latest_indexed_at or "暂无" }}</dd>
+    </dl>
+  </section>
+</section>
+
+{% if result %}
+<section class="content-band markdown-preview">
+  <h2>回答</h2>
+  <pre>{{ result.answer }}</pre>
+</section>
+<section class="content-band">
+  <h2>来源</h2>
+  {% if result.sources %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>类型</th><th>标题</th><th>链接</th></tr></thead>
+      <tbody>
+        {% for src in result.sources %}
+        <tr>
+          <td>{{ src.source_type }}</td>
+          <td>{{ src.title }}</td>
+          <td>{% if src.url %}<a href="{{ src.url }}" target="_blank" rel="noopener">打开</a>{% else %}{{ src.source_id }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="meta">暂无来源。</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

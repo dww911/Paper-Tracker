@@ -209,4 +209,6 @@ def ensure_paper_chinese_abstract(paper: Dict) -> Dict:
         updated["摘要中文翻译"] = translated
         if not updated.get("abstract_original"):
             updated["abstract_original"] = original
+        if not updated.get("abstract_is_complete"):
+            updated["abstract_fetch_status"] = "translated"
     return updated

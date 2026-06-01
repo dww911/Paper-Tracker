@@ -1,53 +1,240 @@
 {% extends "base.html" %}
-{% block title %}研究脉络{% endblock %}
+{% block title %}研究方向发展路径{% endblock %}
+{% block body_class %}page-roadmap{% endblock %}
 {% block content %}
-<section class="page-head">
+<section class="page-head roadmap-head">
   <div>
-    <p class="eyebrow">Roadmap</p>
-    <h1>研究方向进展脉络</h1>
-    <p class="subtitle">基于高星与里程碑论文生成时间线与追踪建议（输出至 roadmap_reports/）。</p>
+    <p class="eyebrow">Research Development Path</p>
+    <h1>研究方向发展路径</h1>
+    <p class="subtitle">基于当前文献库，梳理该研究方向的发展阶段、关键论文、分支路线和推荐阅读顺序。</p>
+    <p class="meta roadmap-scope-note">{{ taxonomy_note }}</p>
+  </div>
+  <form method="get" class="inline-form" action="/roadmap">
+    <select name="profile" onchange="this.form.submit()">
+      {% for item in profiles %}
+      <option value="{{ item.profile_id }}" {% if item.profile_id == selected_profile %}selected{% endif %}>{{ item.display_name or item.name }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="view" value="{{ view }}">
+  </form>
+</section>
+
+{% if request.query_params.get('map_generated') %}
+<p class="success-text">已重新生成发展路径，候选论文 {{ request.query_params.get('candidates') }} 篇。</p>
+{% elif request.query_params.get('generated') %}
+<p class="success-text">已导出 Markdown：{{ request.query_params.get('generated') }}</p>
+{% endif %}
+
+{% if paper_count == 0 %}
+<section class="dash-card dash-empty-card">
+  <h2>当前方向暂无论文</h2>
+  <p>请先<a href="/fetch">获取文献</a>，再生成研究发展方向路径。系统不会从其他方向借用论文。</p>
+</section>
+{% else %}
+
+<section class="roadmap-top-stats dash-card">
+  <dl class="roadmap-stats-dl">
+    <div><dt>当前方向</dt><dd><strong>{{ selected_profile_name }}</strong></dd></div>
+    <div><dt>文献数量</dt><dd>{{ paper_count }} 篇</dd></div>
+    <div><dt>分析范围</dt><dd>{{ year_min }} – {{ year_max }}</dd></div>
+    <div><dt>里程碑论文</dt><dd>{{ milestone_count }} 篇</dd></div>
+    <div><dt>更新时间</dt><dd>{{ map_updated_at }}</dd></div>
+  </dl>
+  <div class="roadmap-top-actions hero-actions">
+    <form method="post" action="/roadmap/generate-map" class="inline-form">
+      <input type="hidden" name="profile" value="{{ selected_profile }}">
+      <button type="submit" class="dash-btn dash-btn-primary dash-btn-sm">重新生成路径</button>
+    </form>
+    <form method="post" action="/roadmap/generate" class="inline-form">
+      <input type="hidden" name="profile" value="{{ selected_profile }}">
+      <button type="submit" class="dash-btn dash-btn-outline dash-btn-sm">导出 Markdown</button>
+    </form>
+    <button type="button" class="dash-btn dash-btn-outline dash-btn-sm" onclick="window.print()">打印 / 保存 PDF</button>
   </div>
 </section>
 
-{% if request.query_params.get('generated') %}
-<p class="success-text">已生成报告：{{ request.query_params.get('generated') }}</p>
-{% endif %}
+<div class="roadmap-layout">
+  <div class="roadmap-main">
+    <section class="roadmap-toolbar hero-actions progress-actions">
+      <div class="roadmap-tabs">
+        <a class="dash-btn dash-btn-sm {{ '' if view == 'timeline' else 'dash-btn-outline' }}" href="/roadmap?profile={{ selected_profile }}&view=timeline">时间轴视图</a>
+        <a class="dash-btn dash-btn-sm {{ '' if view == 'branches' else 'dash-btn-outline' }}" href="/roadmap?profile={{ selected_profile }}&view=branches">分支路线</a>
+        <a class="dash-btn dash-btn-sm {{ '' if view == 'routes' else 'dash-btn-outline' }}" href="/roadmap?profile={{ selected_profile }}&view=routes">精读路线</a>
+      </div>
+    </section>
 
-<form class="flow-panel" method="post" action="/roadmap/generate">
-  <label>研究方向
-    <select name="profile">
-      {% for item in profiles %}
-      <option value="{{ item.profile_id }}" {% if item.profile_id == current_profile_id %}selected{% endif %}>{{ item.display_name or item.name }}</option>
+    {% if view == 'timeline' %}
+    <section class="content-band roadmap-print-area">
+      <h2>方向发展时间轴</h2>
+      {% if not roadmap.stages %}
+      <p class="meta">尚未生成路径。点击「重新生成路径」后，系统将基于当前方向 {{ paper_count }} 篇论文构建时间轴。</p>
+      {% endif %}
+      <div class="roadmap-timeline">
+        {% for stage in roadmap.stages %}
+        <article class="analysis-card roadmap-stage-card {% if selected_stage and selected_stage.node_key == stage.node_key %}active{% endif %}">
+          <p class="eyebrow">{{ stage.stage_label }} · {{ stage.start_year if stage.start_year != 1900 else "早期" }} - {{ "至今" if stage.end_year >= 2100 else stage.end_year }}</p>
+          <h3><a href="/roadmap?profile={{ selected_profile }}&view=timeline&stage={{ stage.node_key }}">{{ stage.title }}</a></h3>
+          <p class="roadmap-core-q"><strong>核心问题：</strong>{{ stage.description }}</p>
+          <p class="meta">必读 {{ stage.progress.must_read or 0 }}/{{ stage.progress.must or 0 }} · 代表论文 {{ stage.progress.total }} 篇 · 已读 {{ stage.progress.read }} 篇</p>
+          <span class="bar-track"><span class="bar-fill green" style="width: {{ stage.progress.pct }}%"></span></span>
+          {% if stage.papers %}
+          <ul class="simple-list roadmap-paper-preview">
+            {% for paper in stage.papers[:4] %}
+            <li>
+              {% if paper.is_must_read %}<strong>必读</strong>{% else %}<span>选读</span>{% endif %}
+              <a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+          <a class="dash-btn dash-btn-outline dash-btn-sm" href="/roadmap?profile={{ selected_profile }}&view=timeline&stage={{ stage.node_key }}">查看阶段论文</a>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% if selected_stage %}
+      <aside class="roadmap-stage-panel dash-card">
+        <h3>{{ selected_stage.title }}</h3>
+        <p>{{ selected_stage.description }}</p>
+        <p class="meta">已读 {{ selected_stage.progress.read }}/{{ selected_stage.progress.total }}</p>
+        <h4>阶段论文</h4>
+        <ul class="milestone-list">
+          {% for paper in selected_stage.papers %}
+          <li>
+            <a href="/papers/{{ paper.stable_id }}"><strong>{{ paper.title }}</strong></a>
+            <small>{{ paper.year or "n.d." }} · {{ paper.reading_status or "unread" }}</small>
+          </li>
+          {% endfor %}
+        </ul>
+      </aside>
+      {% endif %}
+    </section>
+
+    {% elif view == 'branches' %}
+    <section class="content-band roadmap-print-area">
+      <h2>值得继续追的研究分支</h2>
+      {% if not roadmap.flat_branches %}<p class="meta">还没有分支结构，请先生成发展路径。</p>{% endif %}
+      <div class="hub-grid roadmap-branch-grid">
+        {% for branch in roadmap.flat_branches %}
+        <article class="hub-card roadmap-branch-card">
+          <h3>{{ branch.title }}</h3>
+          <p>{{ branch.description }}</p>
+          <p class="meta"><strong>关键词：</strong>{{ branch.keywords_display or branch.keywords }}</p>
+          <dl class="roadmap-branch-metrics">
+            <div><dt>相关论文</dt><dd>{{ branch.progress.total }} 篇</dd></div>
+            <div><dt>高星论文</dt><dd>{{ branch.high_star_count or 0 }} 篇</dd></div>
+            <div><dt>已读</dt><dd>{{ branch.progress.read }} 篇</dd></div>
+            <div><dt>覆盖度</dt><dd>{{ branch.coverage_pct or branch.progress.pct }}%</dd></div>
+            <div><dt>趋势</dt><dd>{{ branch.trend_label or "—" }}</dd></div>
+          </dl>
+          {% if branch.papers %}
+          <h4>代表论文</h4>
+          <ul class="simple-list">
+            {% for paper in branch.papers[:3] %}
+            <li><a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a></li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <div class="roadmap-branch-actions">
+            <a class="dash-btn dash-btn-outline dash-btn-sm" href="/papers?profile={{ selected_profile }}&branch={{ branch.node_key }}">查看相关论文</a>
+            <a class="dash-btn dash-btn-outline dash-btn-sm" href="/roadmap?profile={{ selected_profile }}&view=routes">生成阅读路线</a>
+            {% if advanced_features_enabled %}
+            <a class="dash-btn dash-btn-primary dash-btn-sm" href="/idea-lab?profile={{ selected_profile }}&branch={{ branch.node_key }}">进入想法打磨</a>
+            {% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    {% else %}
+    <section class="content-band roadmap-print-area">
+      <h2>推荐阅读路线</h2>
+      {% if not roadmap.routes %}<p class="meta">还没有精读路线，请先生成发展路径。</p>{% endif %}
+      <div class="hub-grid roadmap-route-grid">
+        {% for route in roadmap.routes %}
+        <article class="hub-card roadmap-route-card">
+          <h3>{{ route.title }}</h3>
+          <p class="meta">{{ route.progress.total }} 篇 · 预计 {{ route.eta_days or "按需" }} · {{ route.progress.read }}/{{ route.progress.total }} 已读</p>
+          <p>{{ route.description }}</p>
+          {% if route.audience %}<p class="meta"><strong>适合人群：</strong>{{ route.audience }}</p>{% endif %}
+          {% if route.goal %}<p class="meta"><strong>阅读目标：</strong>{{ route.goal }}</p>{% endif %}
+          {% if route.papers %}
+          <ol class="roadmap-route-list">
+            {% for paper in route.papers[:8] %}
+            <li>
+              <strong>{{ loop.index }}.</strong>
+              <a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a>
+              <p class="meta">为什么读：{{ paper.read_why or "路线推荐" }} · 状态：{{ paper.reading_status or "unread" }}</p>
+              <form method="post" action="/papers/{{ paper.stable_id }}/status" class="inline-form">
+                <input type="hidden" name="reading_status" value="todo">
+                <input type="hidden" name="return_to" value="/roadmap?profile={{ selected_profile }}&view=routes">
+                <button type="submit" class="dash-btn dash-btn-text dash-btn-sm">加入待读</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ol>
+          {% if route.papers %}
+          <a class="dash-btn dash-btn-outline dash-btn-sm" href="/papers/{{ route.papers[0].stable_id }}">开始阅读</a>
+          {% endif %}
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="roadmap-next-steps dash-card">
+      <h2 class="dash-section-title">下一步你可以</h2>
+      <div class="hero-actions">
+        <a class="dash-btn dash-btn-primary" href="/fetch?branch={{ request.query_params.get('branch') or '' }}">获取该分支更多文献</a>
+        {% if advanced_features_enabled %}
+        <a class="dash-btn dash-btn-outline" href="/idea-lab?profile={{ selected_profile }}">进入想法打磨</a>
+        {% endif %}
+        <form method="post" action="/roadmap/generate" class="inline-form">
+          <input type="hidden" name="profile" value="{{ selected_profile }}">
+          <button type="submit" class="dash-btn dash-btn-outline">导出方向路径 Markdown</button>
+        </form>
+        <a class="dash-btn dash-btn-outline" href="/papers?profile={{ selected_profile }}">回到文献库筛选</a>
+      </div>
+    </section>
+  </div>
+
+  <aside class="roadmap-sidebar dash-card">
+    <h2 class="dash-section-title">当前方向概览</h2>
+    <dl class="roadmap-sidebar-dl">
+      <dt>文献总数</dt><dd>{{ sidebar_summary.total or paper_count }}</dd>
+      <dt>完整摘要</dt><dd>{{ sidebar_summary.abstract_completed or 0 }}</dd>
+      <dt>高星论文</dt><dd>{{ sidebar_summary.high_star or 0 }}</dd>
+      <dt>里程碑</dt><dd>{{ sidebar_summary.milestone_count or milestone_count }}</dd>
+    </dl>
+    {% if sidebar_summary.trending_branches %}
+    <h3>推荐追踪分支</h3>
+    <ol class="simple-list">
+      {% for b in sidebar_summary.trending_branches %}
+      <li><a href="/roadmap?profile={{ selected_profile }}&view=branches&node={{ b.node_key }}">{{ b.title }}</a></li>
       {% endfor %}
-    </select>
-  </label>
-  <label>最低星级
-    <select name="min_rating">
-      <option value="5">5 星</option>
-      <option value="4" selected>4 星及以上</option>
-      <option value="3">3 星及以上</option>
-    </select>
-  </label>
-  <button type="submit">生成脉络报告</button>
-</form>
+    </ol>
+    {% endif %}
+    {% if sidebar_summary.suggestions %}
+    <h3>下一步建议</h3>
+    <ul class="simple-list">
+      {% for tip in sidebar_summary.suggestions %}
+      <li>{{ tip }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <div class="roadmap-sidebar-actions">
+      <a class="dash-btn dash-btn-primary dash-btn-sm" href="/fetch">获取更多相关文献</a>
+      {% if advanced_features_enabled %}
+      <a class="dash-btn dash-btn-outline dash-btn-sm" href="/idea-lab?profile={{ selected_profile }}">进入想法打磨</a>
+      {% endif %}
+      <form method="post" action="/roadmap/generate" class="inline-form">
+        <input type="hidden" name="profile" value="{{ selected_profile }}">
+        <button type="submit" class="dash-btn dash-btn-outline dash-btn-sm">导出方向路径</button>
+      </form>
+    </div>
+  </aside>
+</div>
 
-<section class="content-band">
-  <h2>候选论文（{{ papers|length }} 篇）</h2>
-  {% if not papers %}
-  <p>暂无高星论文，请先运行 daily 获取更多文献。</p>
-  {% else %}
-  <ul class="simple-list">
-    {% for paper in papers %}
-    <li>{{ (paper.display_rating or 3)|stars }} <a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a> ({{ paper.year }})</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-</section>
-
-{% if reports %}
-<section class="content-band">
-  <h2>历史报告</h2>
-  <ul>{% for name in reports %}<li>{{ name }}</li>{% endfor %}</ul>
-</section>
 {% endif %}
 {% endblock %}

@@ -278,6 +278,13 @@ def enrich_paper_metadata(paper: Dict, semantic_scholar_key: str = "") -> Dict:
         enriched["abstract_source"] = "Google Scholar snippet" if paper.get("abstract") else "missing"
         enriched["abstract_is_complete"] = False
 
+    if enriched.get("abstract_is_complete"):
+        enriched["abstract_fetch_status"] = "complete"
+    elif enriched.get("abstract_original"):
+        src = str(enriched.get("abstract_source") or "")
+        enriched["abstract_fetch_status"] = "snippet" if "snippet" in src.lower() else "complete"
+    else:
+        enriched["abstract_fetch_status"] = "missing"
     if enriched.get("abstract_original"):
         enriched["abstract"] = enriched["abstract_original"]
     if enriched.get("journal_name"):

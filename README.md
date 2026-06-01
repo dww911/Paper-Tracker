@@ -1,6 +1,36 @@
-# Ptychography Paper Tracker
+# Research Radar（Ptychography Paper Tracker）
 
-一个可配置的文献追踪工具，用于检索、筛选和归档 ptychography、4D-STEM、电子显微、X-ray ptychography 以及医学影像 AI 等方向的论文。项目支持 arXiv、Semantic Scholar、Google Scholar/SerpApi，能够生成中文日报、追加 Excel 文献库，并按研究方向做相关性评分。
+**个人专属科研文献爬虫与整理助手**：配置研究方向后，自动从 arXiv、OpenAlex、Crossref、Semantic Scholar、Google Scholar 等来源获取论文，抓取摘要、DOI、期刊、引用数与链接，经关键词过滤、去重、评分后写入网页文献库，并支持导出 Excel / Markdown。
+
+## MVP 核心闭环（10 项）
+
+1. 研究方向配置（`--create_profile` / 网页「研究方向」）
+2. 一键获取文献（`/fetch`，默认按方向筛选入库）
+3. 多源检索（arXiv / OpenAlex / Crossref / Semantic Scholar / Google Scholar）
+4. 摘要抓取与中文翻译
+5. 关键词过滤与去重
+6. 星级评分
+7. 原文 / PDF / DOI 链接
+8. 网页文献库筛选（默认仅当前方向）
+9. Excel 导出（与筛选范围一致）
+10. Markdown 日报 / 年度报告
+
+高级功能（RAG 问文献库、Agent、灵感笔记、研究进展、引用生成器等）在 **设置 → 高级功能** 中默认关闭，可按需开启。
+
+## 研究方向地图（Phase 2 亮点）
+
+从 **首页「研究方向地图」卡片** 进入 [`/roadmap`](http://127.0.0.1:8000/roadmap)（不在主导航，避免干扰 MVP 主线）：
+
+- **时间轴视图**：领域发展阶段与代表论文
+- **脉络树视图**：分支路线与覆盖度
+- **精读路线**：入门 / 算法 / 应用等推荐阅读顺序
+- **导出**：Markdown 报告；打印 / 保存 PDF
+
+三阶段产品路径：**文献爬虫（入口）→ 文献库（核心）→ 方向地图（亮点）→ 科研一体化（未来）**
+
+---
+
+一个可配置的文献追踪工具，用于检索、筛选和归档 ptychography、4D-STEM、电子显微、X-ray ptychography 以及医学影像 AI 等方向的论文。
 
 ## 主要功能
 

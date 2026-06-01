@@ -7,7 +7,10 @@
     <h1>灵感笔记</h1>
     <p class="subtitle">把单篇精读里的启发沉淀成可实验、可写作、可归档的研究想法。</p>
   </div>
-  <a class="button" href="/ideas/new">新建灵感</a>
+  <div class="hero-actions">
+    <a class="button" href="/ideas/new">新建灵感</a>
+    <a class="button ghost" href="/ask">用 RAG 找支持文献</a>
+  </div>
 </section>
 
 {% if request.query_params.get('saved') == '1' %}
@@ -39,6 +42,7 @@
     <div>
       <a href="/ideas/{{ idea.id }}"><strong>{{ idea.title }}</strong></a>
       <p>{{ idea.possible_direction or idea.body_md or "暂无摘要" }}</p>
+      <p><a href="/ideas/{{ idea.id }}?support=1">找支持文献</a></p>
     </div>
     <dl>
       <dt>状态</dt><dd>{{ idea.status }}</dd>

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Agent 任务{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Agents</p>
+    <h1>科研任务 Agent</h1>
+    <p class="subtitle">固定任务流：先生成计划，确认后执行，每一步写入日志。</p>
+  </div>
+</section>
+
+<section class="hub-grid">
+  {% for agent in agents %}
+  <article class="hub-card">
+    <h2>{{ agent.label }}</h2>
+    <p>{{ agent.steps|length }} 个固定步骤，执行前会生成计划。</p>
+    <form method="post" action="/agents/plan">
+      <input type="hidden" name="agent_name" value="{{ agent.name }}">
+      <input type="hidden" name="profile" value="{{ current_profile_id }}">
+      <input name="user_request" placeholder="任务目标，可留空">
+      <button type="submit">生成计划</button>
+    </form>
+  </article>
+  {% endfor %}
+</section>
+
+<section class="content-band">
+  <h2>最近任务</h2>
+  {% if agent_runs %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Agent</th><th>状态</th><th>目标</th><th>更新时间</th></tr></thead>
+      <tbody>
+        {% for run in agent_runs %}
+        <tr>
+          <td><a href="/agents/{{ run.id }}">#{{ run.id }}</a></td>
+          <td>{{ run.agent_name }}</td>
+          <td>{{ run.status }}</td>
+          <td>{{ run.user_request }}</td>
+          <td>{{ run.updated_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="meta">暂无 Agent 任务。</p>
+  {% endif %}
+</section>
+{% endblock %}

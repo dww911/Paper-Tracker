@@ -3,22 +3,32 @@
 {% block content %}
 <section class="page-head">
   <div>
-    <p class="eyebrow">Library</p>
     <h1>文献库</h1>
-    <p class="subtitle">全部入库论文；优先检查原文、PDF、DOI、引用数和阅读状态。</p>
+    <p class="subtitle">
+      {% if filters.profile == "__all__" %}
+      全部方向 · 共收录 {{ profile_total }} 篇论文
+      {% elif filters.branch %}
+      分支筛选 · {{ filters.branch }} · 共 {{ profile_total }} 篇
+      {% else %}
+      当前方向：{{ current_profile.display_name or current_profile.name or filters.profile }} · 共收录 {{ profile_total }} 篇论文
+      {% endif %}
+    </p>
   </div>
   <div class="hero-actions">
-    <a class="button" href="/fetch">获取更多文献</a>
-    <a class="button ghost" href="/generate/review">生成综述</a>
-    <a class="button ghost" href="/archive/export-excel">导出 Excel</a>
+    <a class="dash-btn dash-btn-primary" href="/fetch">获取更多文献</a>
+    <a class="dash-btn dash-btn-outline" href="/archive/export-excel{% if export_query %}?{{ export_query }}{% endif %}">导出当前筛选</a>
+    <a class="dash-btn dash-btn-outline" href="/roadmap">查看发展路径</a>
   </div>
 </section>
 
 <form class="filters" method="get">
   <select name="profile">
-    <option value="">全部方向</option>
+    <option value="" {% if filters.profile != "__all__" and (not filters.profile or filters.profile == current_profile_id) %}selected{% endif %}>当前方向</option>
+    <option value="__all__" {% if filters.profile == "__all__" %}selected{% endif %}>全部方向</option>
     {% for item in profiles %}
+    {% if item.profile_id != current_profile_id %}
     <option value="{{ item.profile_id }}" {% if filters.profile == item.profile_id %}selected{% endif %}>{{ item.display_name or item.name }}</option>
+    {% endif %}
     {% endfor %}
   </select>
   <select name="year">
@@ -32,27 +42,6 @@
     {% for star in [5,4,3,2,1] %}
     <option value="{{ star }}" {% if filters.rating|string == star|string %}selected{% endif %}>{{ star|stars }}</option>
     {% endfor %}
-  </select>
-  <select name="level">
-    <option value="">全部等级</option>
-    <option value="A+" {% if filters.level == "A+" %}selected{% endif %}>A+</option>
-    <option value="A " {% if filters.level == "A " %}selected{% endif %}>A</option>
-    <option value="B " {% if filters.level == "B " %}selected{% endif %}>B</option>
-  </select>
-  <select name="abstract">
-    <option value="">摘要状态</option>
-    <option value="complete" {% if filters.abstract == "complete" %}selected{% endif %}>完整摘要</option>
-    <option value="incomplete" {% if filters.abstract == "incomplete" %}selected{% endif %}>未补全</option>
-  </select>
-  <select name="status">
-    <option value="">阅读状态</option>
-    <option value="unread" {% if filters.status == "unread" %}selected{% endif %}>未读</option>
-    <option value="read" {% if filters.status == "read" %}selected{% endif %}>已读</option>
-  </select>
-  <select name="tier">
-    <option value="">入库层级</option>
-    <option value="full" {% if filters.tier == "full" %}selected{% endif %}>高相关</option>
-    <option value="low" {% if filters.tier == "low" %}selected{% endif %}>低优先级</option>
   </select>
   <input name="if_min" type="number" step="0.1" placeholder="IF≥" value="{{ filters.if_min }}">
   <input name="if_max" type="number" step="0.1" placeholder="IF≤" value="{{ filters.if_max }}">
@@ -69,6 +58,11 @@
     <option value="{{ z }}" {% if filters.cas_quartile == z %}selected{% endif %}>{{ z }}</option>
     {% endfor %}
   </select>
+  <select name="cas_top">
+    <option value="">TOP</option>
+    <option value="yes" {% if filters.cas_top == 'yes' %}selected{% endif %}>中科院 TOP</option>
+    <option value="no" {% if filters.cas_top == 'no' %}selected{% endif %}>非 TOP</option>
+  </select>
   <select name="cas_warning">
     <option value="">预警</option>
     <option value="no" {% if filters.cas_warning == 'no' %}selected{% endif %}>无预警</option>
@@ -80,51 +74,63 @@
     <option value="no" {% if filters.journal_matched == 'no' %}selected{% endif %}>未匹配</option>
   </select>
   <input name="core_tag" placeholder="核心标签" value="{{ filters.core_tag }}">
-  <input name="q" placeholder="搜索标题、期刊、摘要" value="{{ filters.q }}">
-  <button type="submit">筛选</button>
+  <select name="abstract">
+    <option value="">摘要状态</option>
+    <option value="complete" {% if filters.abstract == "complete" %}selected{% endif %}>完整摘要</option>
+    <option value="incomplete" {% if filters.abstract == "incomplete" %}selected{% endif %}>未补全</option>
+  </select>
+  <input name="q" placeholder="关键词（标题/期刊/摘要）" value="{{ filters.q }}">
+  {% if filters.branch %}<input type="hidden" name="branch" value="{{ filters.branch }}">{% endif %}
+  <button type="submit" class="dash-btn dash-btn-primary">筛选</button>
+  <a class="dash-btn dash-btn-outline" href="/papers">重置筛选</a>
 </form>
 
-{% if not papers %}
-<section class="empty"><h2>暂无匹配论文</h2><p>请从 <a href="/fetch">获取更多文献</a> 运行 daily 模式入库。</p></section>
+{% if empty_profile_hint %}
+<section class="dash-card dash-empty-card empty">
+  <h2>当前方向暂无论文</h2>
+  <p>{{ empty_profile_hint }} <a href="/fetch">开始获取文献</a></p>
+</section>
+{% elif not papers %}
+<section class="dash-card dash-empty-card empty">
+  <h2>暂无匹配论文</h2>
+  <p>当前筛选条件下没有论文。{% if filters.profile != "__all__" %}可尝试<a href="/fetch">获取更多文献</a>，或切换到「全部方向」。{% endif %}</p>
+</section>
 {% else %}
 <div class="table-wrap">
   <table>
     <thead>
       <tr>
-        <th>标题</th><th>星级</th><th>阅读</th><th>年份</th><th>原文</th><th>DOI</th><th>引用</th><th>期刊质量</th><th>操作</th>
+        <th>星级</th><th>标题</th><th>年份</th><th>期刊</th><th>质量指标</th><th>引用</th><th>原文</th><th>操作</th>
       </tr>
     </thead>
     <tbody>
       {% for paper in papers %}
       <tr>
+        <td>{{ (paper.display_rating or paper.system_rating or 1)|stars }}</td>
         <td class="title-cell">
           <a href="/papers/{{ paper.stable_id }}">{{ paper.title }}</a>
-          <div class="row-subtitle">{{ paper.journal or "未知期刊" }}</div>
+          <div class="journal-rank-cell muted">{{ paper|paper_metrics }} · {{ (paper.display_rating or paper.system_rating or 1)|stars }}</div>
         </td>
-        <td>{{ (paper.display_rating or 1)|stars }}</td>
-        <td><span class="status-pill status-{{ paper.reading_status or 'unread' }}">{{ paper.reading_status or "unread" }}</span></td>
         <td>{{ paper.year or "" }}</td>
-        <td class="link-cell">
-          {% if paper|paper_url %}<a href="{{ paper|paper_url }}" target="_blank" rel="noopener">原文</a>{% else %}<span class="muted">缺失</span>{% endif %}
-          {% if paper.pdf_url %}<a href="{{ paper.pdf_url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
-        </td>
-        <td class="doi-cell">
-          {% if paper.doi_url %}<a href="{{ paper.doi_url }}" target="_blank" rel="noopener">{{ paper.doi or "DOI" }}</a>
-          {% elif paper.doi %}{{ paper.doi }}
-          {% else %}<span class="muted">未补全</span>{% endif %}
-        </td>
+        <td>{{ paper.journal or "—" }}</td>
+        <td class="journal-rank-cell">{{ paper|journal_rank }}</td>
         <td>{{ paper.citation_count or 0 }}</td>
-        <td class="journal-rank-cell"><small>{{ paper.journal or "" }}</small><br>{{ paper|journal_rank }}</td>
+        <td class="link-cell">
+          {% if paper.display_url or paper|paper_url %}
+          <a href="{{ paper.display_url or paper|paper_url }}" target="_blank" rel="noopener">原文</a>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
         <td class="op-links">
           <a href="/papers/{{ paper.stable_id }}">详情</a>
-          <a href="/papers/{{ paper.stable_id }}#my-notes">笔记</a>
-          <a href="/ideas/new?from_paper={{ paper.stable_id }}">灵感</a>
+          {% if paper.display_url or paper|paper_url %} · <a href="{{ paper.display_url or paper|paper_url }}" target="_blank" rel="noopener">原文</a>{% endif %}
+          {% if paper.pdf_url %} · <a href="{{ paper.pdf_url }}" target="_blank" rel="noopener">PDF</a>{% endif %}
+          · <a href="/papers/{{ paper.stable_id }}/export">Markdown</a>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-<p class="meta">显示 {{ papers|length }} 篇（最多 500）</p>
+<p class="meta">列表最多显示 500 篇；导出最多 5000 篇，范围以<a href="/archive/export-excel{% if export_query %}?{{ export_query }}{% endif %}">导出页预览</a>为准。期刊 IF/分区来自本地 journal_metrics.csv（Journal Rank Enhancer）。</p>
 {% endif %}
 {% endblock %}

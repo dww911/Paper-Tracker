@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Agent #{{ run.id }}{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Agent Run</p>
+    <h1>{{ run.agent_name }} #{{ run.id }}</h1>
+    <p class="subtitle">{{ run.user_request }} · 状态：{{ run.status }}</p>
+  </div>
+  {% if run.status == 'planned' %}
+  <form method="post" action="/agents/{{ run.id }}/execute" class="inline-form">
+    <button type="submit">确认并执行</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="content-band">
+  <h2>执行计划</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>步骤</th><th>工具</th><th>状态</th><th>说明</th></tr></thead>
+      <tbody>
+        {% for step in run.steps %}
+        <tr>
+          <td>{{ step.step_index }}. {{ step.name }}</td>
+          <td>{{ step.tool_name }}</td>
+          <td>{{ step.status }}</td>
+          <td>{{ step.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if run.outputs %}
+<section class="content-band markdown-preview">
+  <h2>输出</h2>
+  {% for output in run.outputs %}
+  <article>
+    <h3>{{ output.title }}</h3>
+    {% if output.path %}<p class="meta">保存至：{{ output.path }}</p>{% endif %}
+    <pre>{{ output.content }}</pre>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

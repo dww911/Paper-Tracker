@@ -1,4 +1,4 @@
-# Research Radar（Ptychography Paper Tracker）
+# Research Radar
 
 **个人专属科研文献爬虫与整理助手**：配置研究方向后，自动从 arXiv、OpenAlex、Crossref、Semantic Scholar、Google Scholar 等来源获取论文，抓取摘要、DOI、期刊、引用数与链接，经关键词过滤、去重、评分后写入网页文献库，并支持导出 Excel / Markdown。
 
